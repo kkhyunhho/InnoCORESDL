@@ -64,3 +64,28 @@ format below. Newest entries at the bottom.
   that changes right before the read. Require N consecutive in-tolerance
   readings (settling by agreement), and set the tolerance no tighter than
   the balance's own jitter or it will never converge.
+
+---
+
+## 3. `read_stable_weight` times out — balance only streams `Stat`
+
+- **Problem**: At `confirm_zero`, `read_stable_weight()` raised
+  `TimeoutError: no stable reading within 30.0s under AUTO W/`. Raw
+  listening showed the balance *was* pushing (AUTO W/ on), but every line
+  was `Stat` (its unstable indicator) — it never reported a numeric weight,
+  so the read never returned.
+- **Cause**: The pan never reached the balance's stability criterion — a
+  noisy/disturbed setup (dispense-tube tension on the vial, vibration,
+  draft) and/or too-strict ambient/STAB.RNG filtering. `Stat` carries no
+  digits, so no value can be parsed regardless of timeout or
+  `TARE_TOLERANCE_G` (which is only checked *after* a numeric read).
+- **Fix**: Set the ambient filter looser over SBI — `scale.set_ambient(
+  "very_unstable")` (Esc N) at startup (config `BALANCE_AMBIENT`). Heavier
+  filtering lets the balance declare stability in a noisy environment;
+  confirmed live (read returned −0.0036 g instead of timing out). Best
+  paired with physically steadying the pan (remove tube tension/drafts) for
+  accuracy; `STAB.RNG = V.FAST` is the menu-only complement.
+- **Rule**: A `read_stable_weight` timeout with the balance streaming
+  `Stat` is an instability problem, not a code or tare-tolerance one. Loosen
+  ambient (`Esc K/L/M/N`) and steady the pan; raising `TARE_TOLERANCE_G`
+  does nothing (it runs after the read).
