@@ -39,6 +39,7 @@ Where this file is silent, SDLClaude governs.
 | Path | Purpose |
 |---|---|
 | `cv_mass_measurement.py` | Gravimetric accuracy + precision (CV) of pump dispense volumes; writes a timestamped `.xlsx`. Optionally homes the XZ frame first. |
+| `report.py` | Excel report rendering (heat-map styling + workbook writer), split out of `cv_mass_measurement.py`. |
 | `xz_stage.py` | XZ gantry bring-up (MKS SERVO57D motors): home + move to the measurement position. |
 | `README.md` | User-facing usage, configuration, workbook layout. |
 | `requirements.txt` | `openpyxl` (+ `ftd2xx` for the standalone XZ motor). Pump/balance drivers come from the `elec` env, not `sys.path`. |
