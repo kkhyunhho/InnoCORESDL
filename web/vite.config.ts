@@ -15,6 +15,7 @@ export default defineConfig({
   // same-origin (no CORS). Run the server with `python -m server --fake`
   // (or real). Override the target with VITE_API_TARGET if it's elsewhere.
   server: {
+    host: true, // bind 0.0.0.0 so VSCode forwarding / NUC-IP access works
     proxy: {
       "/v1": {
         target: process.env.VITE_API_TARGET || "http://localhost:17054",
