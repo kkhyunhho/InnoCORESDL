@@ -63,10 +63,12 @@ import {
 } from "@/lib/constants"
 import { PlungerView, StageView, ValveDiagram } from "@/components/diagrams"
 import { Stat, StatusPill } from "@/components/widgets"
-import { api, ApiError } from "@/lib/api"
+import { api, ApiError, type ApiClient } from "@/lib/api"
+import { CELLS, type CellDef } from "@/lib/cells"
+import { makeMockClient } from "@/lib/mockClient"
 
 
-export default function App() {
+function CellDashboard({ cell, client }: { cell: CellDef; client: ApiClient }) {
   const [diagnosed, setDiagnosed] = useState(false)
   const [initialized, setInitialized] = useState(false)
   const [conn, setConn] = useState<Record<string, Conn>>({
@@ -176,7 +178,7 @@ export default function App() {
     const id = setInterval(async () => {
       if (pollGateRef.current) return
       try {
-        const s = await api.status()
+        const s = await client.status()
         setLive((l) => ({
           ...l,
           weightG: s.weight_g,
@@ -195,7 +197,7 @@ export default function App() {
 
   const ALL_DEVS: Dev[] = ["pump", "balance", "stage"]
 
-  const applyDiagnose = (d: Awaited<ReturnType<typeof api.diagnose>>) => {
+  const applyDiagnose = (d: Awaited<ReturnType<typeof client.diagnose>>) => {
     setConn({
       pump: d.pump.ok ? "ok" : "fault",
       balance: d.balance.ok ? "ok" : "fault",
@@ -208,17 +210,17 @@ export default function App() {
   const diagnose = () =>
     withBusy(ALL_DEVS, async () => {
       pushHist("Diagnose")
-      applyDiagnose(await api.diagnose())
+      applyDiagnose(await client.diagnose())
       toast.success("Diagnose OK")
     })
 
   const setupAll = () =>
     withBusy(ALL_DEVS, async () => {
       pushHist("Setup (diagnose + initialize + tare)")
-      applyDiagnose(await api.diagnose())
-      const init = await api.initialize(2)
+      applyDiagnose(await client.diagnose())
+      const init = await client.initialize(2)
       setInitialized(true)
-      const t = await api.tare()
+      const t = await client.tare()
       setLive((l) => ({
         ...l,
         plungerUL: init.plunger_uL,
@@ -232,7 +234,7 @@ export default function App() {
   const initialize = () =>
     withBusy(["pump"], async () => {
       pushHist("Initialize pump")
-      const r = await api.initialize(2)
+      const r = await client.initialize(2)
       setInitialized(true)
       setLive((l) => ({
         ...l,
@@ -245,7 +247,7 @@ export default function App() {
   // Core operations (no busy toggle) — shared by buttons and the scenario
   // runner so both animate the Visualization identically.
   const doTare = async () => {
-    const r = await api.tare()
+    const r = await client.tare()
     setLive((l) => ({ ...l, weightG: r.weight_g }))
     toast.success("Balance tared")
   }
@@ -276,16 +278,16 @@ export default function App() {
       valveConnect: op.asp,
     }))
     toast.info(`Valve → Port ${op.asp} · aspirate ${v} µL (Path ${op.path})`)
-    await withAnim(api.valve(op.asp), VALVE_MS)
+    await withAnim(client.valve(op.asp), VALVE_MS)
     setPlungerDurMs(ms)
     setLive((l) => ({ ...l, plungerUL: v }))
-    await withAnim(api.aspirate(v), ms)
+    await withAnim(client.aspirate(v), ms)
     setLive((l) => ({ ...l, valveConnect: op.disp }))
     toast.info(`Valve → Port ${op.disp} · dispense`)
-    await withAnim(api.valve(op.disp), VALVE_MS)
+    await withAnim(client.valve(op.disp), VALVE_MS)
     setPlungerDurMs(ms)
     setLive((l) => ({ ...l, plungerUL: 0 }))
-    await withAnim(api.dispense(0), ms)
+    await withAnim(client.dispense(0), ms)
     toast.success(`Done — ${v} µL P${op.asp}→P${op.disp}`)
   }
 
@@ -294,7 +296,7 @@ export default function App() {
   // animates n fill/empty cycles alongside it.
   const doPrime = async (op: Extract<Op, { kind: "prime" }>) => {
     const ms = plungerMs(SYRINGE_UL, op.pumpPct)
-    const serverDone = api.cycle(op.n, SYRINGE_UL, op.src, op.disp)
+    const serverDone = client.cycle(op.n, SYRINGE_UL, op.src, op.disp)
     for (let i = 1; i <= op.n; i++) {
       setPlungerDurMs(ms)
       setLive((l) => ({ ...l, plungerUL: SYRINGE_UL }))
@@ -350,7 +352,7 @@ export default function App() {
         setLive((l) => ({ ...l, stageZmm: z })),
       ) // down
     }
-    const r = await api.stageMove(x, z, op.sPct, op.aPct)
+    const r = await client.stageMove(x, z, op.sPct, op.aPct)
     setLive((l) => ({ ...l, stageXmm: r.x_mm, stageZmm: r.z_mm }))
     toast.success(`Stage → X ${x} / Z ${z} mm  (≈ ${(total / 1000).toFixed(1)} s)`)
   }
@@ -368,7 +370,7 @@ export default function App() {
       total += await stageSeg(curX, HOME_RPM, HOME_ACC, () =>
         setLive((l) => ({ ...l, stageXmm: 0 })),
       )
-    const r = await api.stageHome()
+    const r = await client.stageHome()
     setLive((l) => ({ ...l, stageXmm: r.x_mm, stageZmm: r.z_mm }))
     toast.success(`Stage homed  (≈ ${(total / 1000).toFixed(1)} s)`)
   }
@@ -432,7 +434,7 @@ export default function App() {
     pushHist("STOP (abort all motion)")
     // Fire-and-forget the server abort; clear any latched local error so the
     // operator can drive again after dealing with the cause.
-    api.stop().catch(() => {})
+    client.stop().catch(() => {})
     setLive((l) => ({ ...l, error: null }))
     toast.warning("STOP — all motion aborted")
   }
@@ -464,7 +466,17 @@ export default function App() {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="flex items-center gap-4 border-b px-4 py-2">
-        <h1 className="text-sm font-semibold tracking-tight">SyringeLiquidHandler</h1>
+        <h1 className="flex items-baseline gap-2 text-sm font-semibold tracking-tight">
+          {cell.name}
+          <span className="text-xs font-normal text-muted-foreground">
+            {cell.sub}
+          </span>
+          {cell.mock && (
+            <span className="rounded bg-status-warn/15 px-1.5 text-[10px] font-medium text-status-warn">
+              MOCK
+            </span>
+          )}
+        </h1>
         <div className="flex items-center gap-3">
           <StatusPill label="pump" state={conn.pump} />
           <StatusPill label="balance" state={conn.balance} />
@@ -945,6 +957,55 @@ export default function App() {
         </Card>
         </div>
       </main>
+    </div>
+  )
+}
+
+// ── Phase shell: one web for the whole Phase. A cell selector across the top
+//    switches which cell's dashboard is shown. Each cell gets its own client
+//    — a per-cell in-memory mock for now (cell hardware/backends not wired);
+//    flip a cell to mock:false in lib/cells.ts to use the real /v1 backend.
+export default function App() {
+  const [selId, setSelId] = useState(CELLS[0].id)
+  const clientsRef = useRef<Map<string, ApiClient>>(new Map())
+  const sel = CELLS.find((c) => c.id === selId) ?? CELLS[0]
+
+  const clientFor = (c: CellDef): ApiClient => {
+    if (!c.mock) return api
+    let cl = clientsRef.current.get(c.id)
+    if (!cl) {
+      cl = makeMockClient()
+      clientsRef.current.set(c.id, cl)
+    }
+    return cl
+  }
+
+  return (
+    <div className="min-h-dvh bg-background text-foreground">
+      <nav className="flex items-center gap-2 overflow-x-auto border-b bg-muted/40 px-4 py-1.5">
+        <span className="shrink-0 text-sm font-semibold tracking-tight">Phase 1</span>
+        <span className="shrink-0 text-muted-foreground">·</span>
+        {CELLS.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setSelId(c.id)}
+            className={`shrink-0 rounded px-3 py-1 text-left text-xs transition ${
+              c.id === selId
+                ? "bg-background shadow-sm ring-1 ring-border"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span className="block font-medium">
+              {c.name}
+              {c.mock && <span className="ml-1 text-status-warn">●</span>}
+            </span>
+            <span className="block text-[10px] text-muted-foreground">{c.sub}</span>
+          </button>
+        ))}
+      </nav>
+      {/* key={sel.id} remounts the dashboard per cell so its UI state is
+          isolated; the mock client (device state) persists in clientsRef. */}
+      <CellDashboard key={sel.id} cell={sel} client={clientFor(sel)} />
     </div>
   )
 }

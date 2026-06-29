@@ -102,3 +102,7 @@ export const api = {
 
   stop: () => post<{ stopped: boolean }>("/v1/stop"),
 }
+
+// The shape a cell view talks to. The real `api` (HTTP /v1) and the
+// in-memory mock client both satisfy it, so a cell can be backed by either.
+export type ApiClient = typeof api
