@@ -704,7 +704,7 @@ export default function App() {
                         />
                         <PlungerView uL={lv.plungerUL} durMs={plungerDurMs} className="h-20 w-8" />
                       </div>
-                      <div className="w-full">
+                      <div className="w-[70%]">
                         <StageView
                           x={lv.stageXmm}
                           z={lv.stageZmm}
