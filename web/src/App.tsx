@@ -671,7 +671,8 @@ export default function App() {
                 <Activity className="size-4" /> Live
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-3 gap-4">
+            <CardContent className="flex flex-col gap-3">
+              <div className="grid grid-cols-3 gap-4">
               {DISPENSE_CELLS.map((c, i) => {
                 const st = cells[c.id]
                 const sw = cellStateWord(st)
@@ -700,6 +701,28 @@ export default function App() {
                   </div>
                 )
               })}
+              </div>
+              {WEIGH_CELL &&
+                (() => {
+                  const st = cells[WEIGH_CELL.id]
+                  const sw = cellStateWord(st)
+                  return (
+                    <div className="flex flex-wrap items-start gap-6 border-t pt-3">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {WEIGH_CELL.name}
+                      </span>
+                      <Stat label="weight" value={`${st.live.weightG.toFixed(4)} g`} />
+                      <Stat label="linear Y" value={`${st.live.stageXmm.toFixed(0)} mm`} />
+                      <div className="flex flex-col">
+                        <span className="text-xs text-muted-foreground">state</span>
+                        <span className={`inline-flex items-center gap-1 font-medium ${sw.cls}`}>
+                          {sw.fault && <TriangleAlert className="size-3.5" aria-hidden />}
+                          {sw.word}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })()}
             </CardContent>
           </Card>
 
@@ -714,12 +737,12 @@ export default function App() {
               {/* exact-thirds grid (gap-0) so each cell centre = (i+0.5)/3 of
                   the width — the linear-track stops below line up under them */}
               <div className="grid grid-cols-3">
-                {DISPENSE_CELLS.map((c, i) => {
+                {DISPENSE_CELLS.map((c) => {
                   const lv = cells[c.id].live
                   return (
                     <div key={c.id} className="flex flex-col items-center gap-1 px-1">
                       <span className="text-xs font-medium text-muted-foreground">
-                        {c.name} · {i + 1}
+                        {c.name}
                       </span>
                       <div className="flex items-end gap-1">
                         <ValveDiagram
@@ -730,7 +753,7 @@ export default function App() {
                         />
                         <PlungerView uL={lv.plungerUL} durMs={plungerDurMs} className="h-20 w-8" />
                       </div>
-                      <div className="w-[70%]">
+                      <div className="w-[49%]">
                         <StageView
                           x={lv.stageXmm}
                           z={lv.stageZmm}
@@ -743,21 +766,14 @@ export default function App() {
                 })}
               </div>
               {WEIGH_CELL && (
-                <>
-                  <LinearTrack
-                    mm={cells[WEIGH_CELL.id].live.stageXmm}
-                    maxMm={X_MAX_MM}
-                    weightG={cells[WEIGH_CELL.id].live.weightG}
-                    cells={DISPENSE_CELLS.map((c) => c.name)}
-                    durMs={stageDurMs}
-                    ease={stageEase}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {WEIGH_CELL.name} · linear motor (Y{" "}
-                    {cells[WEIGH_CELL.id].live.stageXmm.toFixed(0)} mm) — the
-                    single balance shuttles under cell1–3 to weigh each dispense
-                  </span>
-                </>
+                <LinearTrack
+                  mm={cells[WEIGH_CELL.id].live.stageXmm}
+                  maxMm={X_MAX_MM}
+                  weightG={cells[WEIGH_CELL.id].live.weightG}
+                  cells={DISPENSE_CELLS.map((c) => c.name)}
+                  durMs={stageDurMs}
+                  ease={stageEase}
+                />
               )}
             </CardContent>
           </Card>
