@@ -1,22 +1,21 @@
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
-  TriangleAlert,
-  OctagonX,
-  Beaker,
-  Scale,
-  Move3d,
-  RefreshCw,
-  Wand2,
-  RotateCw,
-  Droplet,
-  Plus,
-  Play,
-  Trash2,
-  ListChecks,
-  History as HistoryIcon,
   Activity,
+  Beaker,
+  Droplet,
   Eye,
+  ListChecks,
+  Move3d,
+  OctagonX,
+  Plus,
+  RefreshCw,
+  RotateCw,
+  Ruler,
+  Scale,
+  Trash2,
+  TriangleAlert,
+  Wand2,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -43,11 +42,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 
-import type { Conn, Dev, HistEntry, Live, Op, Port, Step } from "@/lib/types"
+import type { Conn, Dev, HistEntry, Live, Op, Port } from "@/lib/types"
 import {
   AMBIENT_LEVELS,
   HOME_ACC,
-  HOME_MM_S,
   HOME_RPM,
   MAX_MM_S,
   MAX_RPM,
@@ -61,22 +59,28 @@ import {
   plungerMs,
   sleep,
 } from "@/lib/constants"
-import { PlungerView, StageView, ValveDiagram } from "@/components/diagrams"
-import { Stat, StatusPill } from "@/components/widgets"
-import { api, ApiError, type ApiClient } from "@/lib/api"
+import {
+  LinearTrack,
+  PlungerView,
+  StageView,
+  ValveDiagram,
+} from "@/components/diagrams"
+import { Stat } from "@/components/widgets"
+import { type ApiClient, ApiError } from "@/lib/api"
 import { CELLS, type CellDef } from "@/lib/cells"
 import { makeMockClient } from "@/lib/mockClient"
 
+// ── Per-cell runtime state held by the Phase shell ─────────────────────────
+interface CellState {
+  live: Live
+  conn: Record<Dev, Conn>
+  busy: Record<Dev, boolean>
+  diagnosed: boolean
+  initialized: boolean
+}
 
-function CellDashboard({ cell, client }: { cell: CellDef; client: ApiClient }) {
-  const [diagnosed, setDiagnosed] = useState(false)
-  const [initialized, setInitialized] = useState(false)
-  const [conn, setConn] = useState<Record<string, Conn>>({
-    pump: "idle",
-    balance: "idle",
-    stage: "idle",
-  })
-  const [live, setLive] = useState<Live>({
+const newCellState = (): CellState => ({
+  live: {
     weightG: 0,
     path: 1,
     aspPort: 1,
@@ -86,318 +90,312 @@ function CellDashboard({ cell, client }: { cell: CellDef; client: ApiClient }) {
     stageXmm: 0,
     stageZmm: 0,
     error: null,
-  })
-  // Busy is tracked per device — only the devices an operation actually
-  // occupies show busy (e.g. Prime busies the pump only).
-  const [busy, setBusy] = useState<Record<Dev, boolean>>({
-    pump: false,
-    balance: false,
-    stage: false,
-  })
-  const [running, setRunning] = useState(false) // a scenario is in progress
+  },
+  conn: { pump: "idle", balance: "idle", stage: "idle" },
+  busy: { pump: false, balance: false, stage: false },
+  diagnosed: false,
+  initialized: false,
+})
+
+const ALL_DEVS: Dev[] = ["pump", "balance", "stage"]
+const DISPENSE_CELLS = CELLS.filter((c) => c.kind === "dispense")
+const WEIGH_CELL = CELLS.find((c) => c.kind === "weigh")
+
+interface Scenario {
+  id: number
+  name: string
+  from: string
+  to: string
+}
+
+export default function App() {
+  const [cells, setCells] = useState<Record<string, CellState>>(() =>
+    Object.fromEntries(CELLS.map((c) => [c.id, newCellState()])),
+  )
+  const [selId, setSelId] = useState(CELLS[0].id)
+
+  // One mock client per cell (lazy), kept across re-renders.
+  const clientsRef = useRef<Map<string, ApiClient>>(new Map())
+  const clientFor = (id: string): ApiClient => {
+    let cl = clientsRef.current.get(id)
+    if (!cl) {
+      cl = makeMockClient()
+      clientsRef.current.set(id, cl)
+    }
+    return cl
+  }
+
+  // Shared control inputs (the right panel controls one cell at a time).
   const [volume, setVolume] = useState("100")
   const [pumpSpeedPct, setPumpSpeedPct] = useState("60")
   const [primeCycles, setPrimeCycles] = useState("3")
   const [xTarget, setXTarget] = useState("261.5")
   const [zTarget, setZTarget] = useState("234.0")
+  const [yTarget, setYTarget] = useState("150")
   const [speedPct, setSpeedPct] = useState("20")
   const [accelPct, setAccelPct] = useState("50")
+
+  // Shared animation knobs (only the active cell animates at a time).
   const [stageDurMs, setStageDurMs] = useState(500)
-  const [stageEase, setStageEase] = useState("ease") // "linear" when accel=0
+  const [stageEase, setStageEase] = useState("ease")
   const [plungerDurMs, setPlungerDurMs] = useState(400)
-  const [steps, setSteps] = useState<Step[]>([])
-  const [stepId, setStepId] = useState(1)
+
   const [history, setHistory] = useState<HistEntry[]>([])
   const histId = useRef(1)
-  const pushHist = (label: string) => {
+  const [scenarios, setScenarios] = useState<Scenario[]>([])
+  const scenId = useRef(1)
+  const [scenName, setScenName] = useState("")
+  const [scenFrom, setScenFrom] = useState("")
+  const [scenTo, setScenTo] = useState("")
+
+  const cellsRef = useRef(cells)
+  cellsRef.current = cells
+
+  // ── state helpers ─────────────────────────────────────────────────────
+  const patchCell = (id: string, fn: (c: CellState) => CellState) =>
+    setCells((cs) => ({ ...cs, [id]: fn(cs[id]) }))
+  const patchLive = (id: string, fn: (l: Live) => Live) =>
+    patchCell(id, (c) => ({ ...c, live: fn(c.live) }))
+
+  const pushHist = (id: string, label: string) => {
+    const name = CELLS.find((c) => c.id === id)?.name ?? id
     const at = new Date().toLocaleTimeString()
-    setHistory((h) => [{ id: histId.current++, at, label }, ...h].slice(0, 200))
+    setHistory((h) =>
+      [{ id: histId.current++, at, label: `${name} · ${label}` }, ...h].slice(
+        0,
+        300,
+      ),
+    )
   }
 
-  const anyBusy = busy.pump || busy.balance || busy.stage
-  const ready = !anyBusy && !running && !live.error
-  const canInit = ready && diagnosed
-  const canDrive = ready && initialized
-
-  // Per-device state so a non-ready cell shows *which* device is the problem,
-  // and only the device(s) actually working report busy.
-  const devState = (dev: Dev) => {
-    if (live.error) return { word: live.error, cls: "text-status-fault", fault: true }
-    if (conn[dev] === "fault")
-      return { word: "fault", cls: "text-status-fault", fault: true }
-    if (conn[dev] !== "ok") return { word: "—", cls: "text-status-idle", fault: false }
-    return busy[dev]
-      ? { word: "busy", cls: "text-status-warn", fault: false }
-      : { word: "ready", cls: "text-status-ok", fault: false }
-  }
-
-  // Always-current snapshots for routines/poller that run across awaits
-  // (read the latest values, not a stale closure).
-  const liveRef = useRef(live)
-  liveRef.current = live
-  const pollGateRef = useRef(false)
-  pollGateRef.current = anyBusy || running
-
-  // Surface a server/network error to the user and the Live state. Setting
-  // live.error blocks further commands (ready=false) until a re-diagnose /
-  // setup / STOP clears it.
-  const fail = (e: unknown) => {
+  const fail = (id: string, e: unknown) => {
     const msg =
       e instanceof ApiError ? `${e.errorName}: ${e.message}` : String(e)
-    setLive((l) => ({ ...l, error: msg }))
+    patchLive(id, (l) => ({ ...l, error: msg }))
     toast.error(msg)
   }
 
-  // Await a real /v1 call together with a minimum animation time, so the
-  // Visualization still plays against the instant FakeCell and tracks real
-  // device time on hardware (whichever is longer wins).
-  const withAnim = async <T,>(p: Promise<T>, animMs: number): Promise<T> => {
-    const [r] = await Promise.all([p, sleep(animMs)])
-    return r
-  }
+  const setBusy = (id: string, devs: Dev[], on: boolean) =>
+    patchCell(id, (c) => ({
+      ...c,
+      busy: { ...c.busy, ...Object.fromEntries(devs.map((d) => [d, on])) },
+    }))
 
-  // Server valve label ("1".."4"/"?") → the UI's usable Port (1 or 3).
-  const asPort = (v: string): Port => (v === "3" ? 3 : 1)
-
-  // Run `fn` with the named devices marked busy for its duration; any error
-  // is surfaced (not swallowed) and the devices freed.
-  async function withBusy(devs: Dev[], fn: () => Promise<void>) {
-    setBusy((b) => ({ ...b, ...Object.fromEntries(devs.map((d) => [d, true])) }))
+  const withBusy = async (id: string, devs: Dev[], fn: () => Promise<void>) => {
+    setBusy(id, devs, true)
     try {
       await fn()
     } catch (e) {
-      fail(e)
+      fail(id, e)
     } finally {
-      setBusy((b) => ({ ...b, ...Object.fromEntries(devs.map((d) => [d, false])) }))
+      setBusy(id, devs, false)
     }
   }
 
-  // ── Live readout polling: keep weight/plunger/stage fresh from the server
-  //    while idle. Skips while busy/running so it never clobbers an
-  //    in-flight animation. Poll failures (server down) are ignored. ────────
+  // Await a real call together with a minimum animation time.
+  const withAnim = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
+    const [r] = await Promise.all([p, sleep(ms)])
+    return r
+  }
+  const asPort = (v: string): Port => (v === "3" ? 3 : 1)
+
+  // ── Live readout polling for every cell (skip a cell while it's busy) ──
   useEffect(() => {
-    const id = setInterval(async () => {
-      if (pollGateRef.current) return
-      try {
-        const s = await client.status()
-        setLive((l) => ({
-          ...l,
-          weightG: s.weight_g,
-          plungerUL: s.plunger_uL,
-          stageXmm: s.stage_x_mm,
-          stageZmm: s.stage_z_mm,
-          valveConnect: asPort(s.valve),
-          error: s.error,
-        }))
-      } catch {
-        /* server not reachable — leave last-known values */
+    const t = setInterval(async () => {
+      for (const c of CELLS) {
+        const st = cellsRef.current[c.id]
+        if (st.busy.pump || st.busy.balance || st.busy.stage) continue
+        try {
+          const s = await clientFor(c.id).status()
+          patchLive(c.id, (l) => ({
+            ...l,
+            weightG: s.weight_g,
+            plungerUL: s.plunger_uL,
+            stageXmm: s.stage_x_mm,
+            stageZmm: s.stage_z_mm,
+            valveConnect: asPort(s.valve),
+            error: s.error,
+          }))
+        } catch {
+          /* unreachable backend — keep last-known */
+        }
       }
     }, 2000)
-    return () => clearInterval(id)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const ALL_DEVS: Dev[] = ["pump", "balance", "stage"]
+  // ── per-cell operations (id-parameterised) ────────────────────────────
+  const applyDiagnose = (
+    id: string,
+    d: Awaited<ReturnType<ApiClient["diagnose"]>>,
+  ) =>
+    patchCell(id, (c) => ({
+      ...c,
+      conn: {
+        pump: d.pump.ok ? "ok" : "fault",
+        balance: d.balance.ok ? "ok" : "fault",
+        stage: d.stage.ok ? "ok" : "fault",
+      },
+      diagnosed: true,
+      live: { ...c.live, error: null },
+    }))
 
-  const applyDiagnose = (d: Awaited<ReturnType<typeof client.diagnose>>) => {
-    setConn({
-      pump: d.pump.ok ? "ok" : "fault",
-      balance: d.balance.ok ? "ok" : "fault",
-      stage: d.stage.ok ? "ok" : "fault",
+  const diagnoseCell = (id: string) =>
+    withBusy(id, ALL_DEVS, async () => {
+      pushHist(id, "Diagnose")
+      applyDiagnose(id, await clientFor(id).diagnose())
     })
-    setDiagnosed(true)
-    setLive((l) => ({ ...l, error: null }))
-  }
 
-  const diagnose = () =>
-    withBusy(ALL_DEVS, async () => {
-      pushHist("Diagnose")
-      applyDiagnose(await client.diagnose())
-      toast.success("Diagnose OK")
-    })
-
-  const setupAll = () =>
-    withBusy(ALL_DEVS, async () => {
-      pushHist("Setup (diagnose + initialize + tare)")
-      applyDiagnose(await client.diagnose())
-      const init = await client.initialize(2)
-      setInitialized(true)
-      const t = await client.tare()
-      setLive((l) => ({
-        ...l,
-        plungerUL: init.plunger_uL,
-        valveConnect: asPort(init.valve),
-        weightG: t.weight_g,
-        error: null,
+  const initializeCell = (id: string) =>
+    withBusy(id, ["pump"], async () => {
+      pushHist(id, "Initialize pump")
+      const r = await clientFor(id).initialize(2)
+      patchCell(id, (c) => ({
+        ...c,
+        initialized: true,
+        live: {
+          ...c.live,
+          plungerUL: r.plunger_uL,
+          valveConnect: asPort(r.valve),
+        },
       }))
-      toast.success("Setup complete — diagnosed, initialized, tared")
     })
 
-  const initialize = () =>
-    withBusy(["pump"], async () => {
-      pushHist("Initialize pump")
-      const r = await client.initialize(2)
-      setInitialized(true)
-      setLive((l) => ({
-        ...l,
-        plungerUL: r.plunger_uL,
-        valveConnect: asPort(r.valve),
-      }))
-      toast.success("Pump initialized")
+  const tareCell = (id: string) =>
+    withBusy(id, ["balance"], async () => {
+      pushHist(id, "Tare")
+      const r = await clientFor(id).tare()
+      patchLive(id, (l) => ({ ...l, weightG: r.weight_g }))
     })
 
-  // Core operations (no busy toggle) — shared by buttons and the scenario
-  // runner so both animate the Visualization identically.
-  const doTare = async () => {
-    const r = await client.tare()
-    setLive((l) => ({ ...l, weightG: r.weight_g }))
-    toast.success("Balance tared")
-  }
-  const tare = () => {
-    pushHist("Tare")
-    return withBusy(["balance"], doTare)
-  }
+  const setAmbientCell = (id: string, level: string) =>
+    withBusy(id, ["balance"], async () => {
+      await clientFor(id).ambient(level)
+      pushHist(id, `Ambient → ${level}`)
+    })
 
-  const setPath = (p: 1 | 2) => setLive((l) => ({ ...l, path: p }))
-  // asp and disp ports must differ (only Port 1 / Port 3 are usable)
-  const setAsp = (p: Port) =>
-    setLive((l) => ({ ...l, aspPort: p, dispPort: p === 1 ? 3 : 1 }))
-  const setDisp = (p: Port) =>
-    setLive((l) => ({ ...l, dispPort: p, aspPort: p === 1 ? 3 : 1 }))
-
-  // #5 Activation: valve rotor → asp port (C joins it) + aspirate, then rotor
-  // → disp port + dispense. Valve turn = VALVE_MS; plunger fill time from the
-  // pump's top-speed setting. Drives the Live state, so the Visualization (and
-  // the scenario runner, which calls this same routine) animate together.
-  const doActivation = async (op: Extract<Op, { kind: "dispense" }>) => {
+  const doActivation = async (id: string, op: Extract<Op, { kind: "dispense" }>) => {
     const v = clamp(op.v, 0, SYRINGE_UL)
     const ms = plungerMs(v, op.pumpPct)
-    setLive((l) => ({
+    const cl = clientFor(id)
+    patchLive(id, (l) => ({
       ...l,
       path: op.path,
       aspPort: op.asp,
       dispPort: op.disp,
       valveConnect: op.asp,
     }))
-    toast.info(`Valve → Port ${op.asp} · aspirate ${v} µL (Path ${op.path})`)
-    await withAnim(client.valve(op.asp), VALVE_MS)
+    await withAnim(cl.valve(op.asp), VALVE_MS)
     setPlungerDurMs(ms)
-    setLive((l) => ({ ...l, plungerUL: v }))
-    await withAnim(client.aspirate(v), ms)
-    setLive((l) => ({ ...l, valveConnect: op.disp }))
-    toast.info(`Valve → Port ${op.disp} · dispense`)
-    await withAnim(client.valve(op.disp), VALVE_MS)
+    patchLive(id, (l) => ({ ...l, plungerUL: v }))
+    await withAnim(cl.aspirate(v), ms)
+    patchLive(id, (l) => ({ ...l, valveConnect: op.disp }))
+    await withAnim(cl.valve(op.disp), VALVE_MS)
     setPlungerDurMs(ms)
-    setLive((l) => ({ ...l, plungerUL: 0 }))
-    await withAnim(client.dispense(0), ms)
-    toast.success(`Done — ${v} µL P${op.asp}→P${op.disp}`)
+    patchLive(id, (l) => ({ ...l, plungerUL: 0 }))
+    await withAnim(cl.dispense(0), ms)
+    toast.success(`${cellName(id)} — ${v} µL P${op.asp}→P${op.disp}`)
   }
 
-  // Prime: full-stroke fill/empty cycles, always at max volume. The server
-  // runs the whole repeated cycle in one /pump/cycle call; the client
-  // animates n fill/empty cycles alongside it.
-  const doPrime = async (op: Extract<Op, { kind: "prime" }>) => {
+  const doPrime = async (id: string, op: Extract<Op, { kind: "prime" }>) => {
     const ms = plungerMs(SYRINGE_UL, op.pumpPct)
-    const serverDone = client.cycle(op.n, SYRINGE_UL, op.src, op.disp)
+    const done = clientFor(id).cycle(op.n, SYRINGE_UL, op.src, op.disp)
     for (let i = 1; i <= op.n; i++) {
       setPlungerDurMs(ms)
-      setLive((l) => ({ ...l, plungerUL: SYRINGE_UL }))
+      patchLive(id, (l) => ({ ...l, plungerUL: SYRINGE_UL }))
       await sleep(ms)
       setPlungerDurMs(ms)
-      setLive((l) => ({ ...l, plungerUL: 0 }))
+      patchLive(id, (l) => ({ ...l, plungerUL: 0 }))
       await sleep(ms)
-      toast.info(`Prime ${i}/${op.n} (${SYRINGE_UL} µL)`)
     }
-    await serverDone // surface any server error + wait for real completion
-    toast.success(`Primed (${op.n} cycles @ ${SYRINGE_UL} µL)`)
+    await done
+    toast.success(`${cellName(id)} — primed ×${op.n}`)
   }
 
-  // One timed stage segment: animation duration tracks the real move time from
-  // the speed/accel profile (MKS §9.1 + ball-screw lead), so changing speed is
-  // reflected in how fast the gantry animates.
+  // One timed gantry segment; animation duration tracks the real move time.
   const stageSeg = async (
     dist: number,
     rpm: number,
     acc: number,
-    applyFn: () => void,
+    apply: () => void,
   ) => {
     const realMs = moveTimeMs(dist, rpm, acc)
     const animMs = clamp(realMs, 150, 6000)
     setStageDurMs(animMs)
-    applyFn()
+    apply()
     await sleep(animMs)
     return realMs
   }
 
-  // #3 motion priority: up → X → down (never diagonal). If X is unchanged,
-  // move Z straight to target (no raise).
-  const doMoveStage = async (op: Extract<Op, { kind: "stage" }>) => {
+  const doMoveStage = async (id: string, op: Extract<Op, { kind: "stage" }>) => {
     const x = clamp(op.x, 0, X_MAX_MM)
     const z = clamp(op.z, 0, Z_MAX_MM)
     const rpm = (clamp(op.sPct, 1, 100) / 100) * MAX_RPM
-    // accel: 0 is the MKS exception — no ramp, runs straight at set speed
-    // (instant). 1–100% maps to ramp code 1–255 (slow→fast).
+    // accel 0 is the MKS exception — no ramp, runs straight at set speed.
     const acc = Math.round((clamp(op.aPct, 0, 100) / 100) * 255)
     setStageEase(acc === 0 ? "linear" : "ease")
-    const curX = liveRef.current.stageXmm
-    const curZ = liveRef.current.stageZmm
-    let total = 0
-    if (x === curX) {
-      total += await stageSeg(z - curZ, rpm, acc, () =>
-        setLive((l) => ({ ...l, stageZmm: z })),
+    const cur = cellsRef.current[id].live
+    if (x === cur.stageXmm) {
+      await stageSeg(z - cur.stageZmm, rpm, acc, () =>
+        patchLive(id, (l) => ({ ...l, stageZmm: z })),
       )
     } else {
-      total += await stageSeg(curZ, rpm, acc, () =>
-        setLive((l) => ({ ...l, stageZmm: 0 })),
-      ) // up
-      total += await stageSeg(x - curX, rpm, acc, () =>
-        setLive((l) => ({ ...l, stageXmm: x })),
-      ) // X
-      total += await stageSeg(z, rpm, acc, () =>
-        setLive((l) => ({ ...l, stageZmm: z })),
-      ) // down
-    }
-    const r = await client.stageMove(x, z, op.sPct, op.aPct)
-    setLive((l) => ({ ...l, stageXmm: r.x_mm, stageZmm: r.z_mm }))
-    toast.success(`Stage → X ${x} / Z ${z} mm  (≈ ${(total / 1000).toFixed(1)} s)`)
-  }
-
-  // Home: vertical move first (Z → 0, up), then X → 0, at the fixed homing
-  // speed — animated like a normal move (not a snap).
-  const doHome = async () => {
-    setStageEase("ease") // homing accel is fixed > 0
-    const curX = liveRef.current.stageXmm
-    const curZ = liveRef.current.stageZmm
-    let total = 0
-    total += await stageSeg(curZ, HOME_RPM, HOME_ACC, () =>
-      setLive((l) => ({ ...l, stageZmm: 0 })),
-    )
-    if (curX !== 0)
-      total += await stageSeg(curX, HOME_RPM, HOME_ACC, () =>
-        setLive((l) => ({ ...l, stageXmm: 0 })),
+      await stageSeg(cur.stageZmm, rpm, acc, () =>
+        patchLive(id, (l) => ({ ...l, stageZmm: 0 })),
       )
-    const r = await client.stageHome()
-    setLive((l) => ({ ...l, stageXmm: r.x_mm, stageZmm: r.z_mm }))
-    toast.success(`Stage homed  (≈ ${(total / 1000).toFixed(1)} s)`)
+      await stageSeg(x - cur.stageXmm, rpm, acc, () =>
+        patchLive(id, (l) => ({ ...l, stageXmm: x })),
+      )
+      await stageSeg(z, rpm, acc, () =>
+        patchLive(id, (l) => ({ ...l, stageZmm: z })),
+      )
+    }
+    await clientFor(id).stageMove(x, z, op.sPct, op.aPct)
+    toast.success(`${cellName(id)} gantry → X ${x} / Z ${z} mm`)
   }
 
-  const runStep = async (op: Op) => {
-    if (op.kind === "dispense") await doActivation(op)
-    else if (op.kind === "prime") await doPrime(op)
-    else if (op.kind === "stage") await doMoveStage(op)
-    else await doTare()
+  const doHome = async (id: string) => {
+    setStageEase("ease")
+    const cur = cellsRef.current[id].live
+    await stageSeg(cur.stageZmm, HOME_RPM, HOME_ACC, () =>
+      patchLive(id, (l) => ({ ...l, stageZmm: 0 })),
+    )
+    if (cur.stageXmm !== 0)
+      await stageSeg(cur.stageXmm, HOME_RPM, HOME_ACC, () =>
+        patchLive(id, (l) => ({ ...l, stageXmm: 0 })),
+      )
+    await clientFor(id).stageHome()
+    toast.success(`${cellName(id)} homed`)
   }
-  const stepDevs = (op: Op): Dev[] =>
-    op.kind === "stage" ? ["stage"] : op.kind === "tare" ? ["balance"] : ["pump"]
 
-  // ── Param snapshots from the current right-tab config ─────────────────────
-  const dispenseOp = (): Extract<Op, { kind: "dispense" }> => ({
-    kind: "dispense",
-    v: clamp(Number(volume) || 0, 0, SYRINGE_UL),
-    asp: live.aspPort,
-    disp: live.dispPort,
-    path: live.path,
-    pumpPct: clamp(Number(pumpSpeedPct) || 0, 1, 100),
-  })
+  // cell4 linear Y: single axis, mapped onto stageXmm.
+  const doLinearMove = async (id: string, yMm: number) => {
+    const y = clamp(yMm, 0, X_MAX_MM)
+    const rpm = (clamp(Number(speedPct) || 0, 1, 100) / 100) * MAX_RPM
+    const acc = Math.round((clamp(Number(accelPct) || 0, 0, 100) / 100) * 255)
+    setStageEase(acc === 0 ? "linear" : "ease")
+    await stageSeg(y - cellsRef.current[id].live.stageXmm, rpm, acc, () =>
+      patchLive(id, (l) => ({ ...l, stageXmm: y })),
+    )
+    await clientFor(id).stageMove(y, 0, Number(speedPct) || 20, acc)
+    toast.success(`${cellName(id)} linear Y → ${y} mm`)
+  }
+
+  const cellName = (id: string) => CELLS.find((c) => c.id === id)?.name ?? id
+
+  // ── op param snapshots from the shared inputs + the cell's valve config ──
+  const dispenseOp = (id: string): Extract<Op, { kind: "dispense" }> => {
+    const lv = cellsRef.current[id].live
+    return {
+      kind: "dispense",
+      v: clamp(Number(volume) || 0, 0, SYRINGE_UL),
+      asp: lv.aspPort,
+      disp: lv.dispPort,
+      path: lv.path,
+      pumpPct: clamp(Number(pumpSpeedPct) || 0, 1, 100),
+    }
+  }
   const stageOp = (): Extract<Op, { kind: "stage" }> => ({
     kind: "stage",
     x: clamp(Number(xTarget) || 0, 0, X_MAX_MM),
@@ -405,99 +403,127 @@ function CellDashboard({ cell, client }: { cell: CellDef; client: ApiClient }) {
     sPct: clamp(Number(speedPct) || 0, 1, 100),
     aPct: clamp(Number(accelPct) || 0, 0, 100),
   })
-  const primeOp = (): Extract<Op, { kind: "prime" }> => ({
-    kind: "prime",
-    n: clamp(Number(primeCycles) || 1, 1, 10),
-    pumpPct: clamp(Number(pumpSpeedPct) || 0, 1, 100),
-    src: live.aspPort,
-    disp: live.dispPort,
-  })
+  const primeOp = (id: string): Extract<Op, { kind: "prime" }> => {
+    const lv = cellsRef.current[id].live
+    return {
+      kind: "prime",
+      n: clamp(Number(primeCycles) || 1, 1, 10),
+      pumpPct: clamp(Number(pumpSpeedPct) || 0, 1, 100),
+      src: lv.aspPort,
+      disp: lv.dispPort,
+    }
+  }
 
+  // button wrappers act on the selected cell
   const activation = () => {
-    const op = dispenseOp()
-    pushHist(`Dispense ${op.v} µL · Path ${op.path} · P${op.asp}→P${op.disp}`)
-    return withBusy(["pump"], () => doActivation(op))
+    const op = dispenseOp(selId)
+    pushHist(selId, `Dispense ${op.v} µL · Path ${op.path} · P${op.asp}→P${op.disp}`)
+    return withBusy(selId, ["pump"], () => doActivation(selId, op))
   }
   const prime = () => {
-    const op = primeOp()
-    pushHist(`Prime ×${op.n} (${SYRINGE_UL} µL)`)
-    return withBusy(["pump"], () => doPrime(op))
-  }
-  const homeStage = () => {
-    pushHist("Home stage")
-    return withBusy(["stage"], doHome)
+    const op = primeOp(selId)
+    pushHist(selId, `Prime ×${op.n}`)
+    return withBusy(selId, ["pump"], () => doPrime(selId, op))
   }
   const moveStage = () => {
     const op = stageOp()
-    pushHist(`Stage → X ${op.x} / Z ${op.z} mm`)
-    return withBusy(["stage"], () => doMoveStage(op))
+    pushHist(selId, `Gantry → X ${op.x} / Z ${op.z} mm`)
+    return withBusy(selId, ["stage"], () => doMoveStage(selId, op))
+  }
+  const homeStage = () => {
+    pushHist(selId, "Home gantry")
+    return withBusy(selId, ["stage"], () => doHome(selId))
+  }
+  const linearMove = () => {
+    const y = clamp(Number(yTarget) || 0, 0, X_MAX_MM)
+    pushHist(selId, `Linear Y → ${y} mm`)
+    return withBusy(selId, ["stage"], () => doLinearMove(selId, y))
+  }
+  const linearHome = () => {
+    pushHist(selId, "Home linear Y")
+    return withBusy(selId, ["stage"], () => doHome(selId))
   }
 
-  function stopAll() {
-    setBusy({ pump: false, balance: false, stage: false })
-    setRunning(false)
-    pushHist("STOP (abort all motion)")
-    // Fire-and-forget the server abort; clear any latched local error so the
-    // operator can drive again after dealing with the cause.
-    client.stop().catch(() => {})
-    setLive((l) => ({ ...l, error: null }))
+  const setPath = (p: 1 | 2) => patchLive(selId, (l) => ({ ...l, path: p }))
+  const setAsp = (p: Port) =>
+    patchLive(selId, (l) => ({ ...l, aspPort: p, dispPort: p === 1 ? 3 : 1 }))
+  const setDisp = (p: Port) =>
+    patchLive(selId, (l) => ({ ...l, dispPort: p, aspPort: p === 1 ? 3 : 1 }))
+
+  // ── Phase-level lifecycle ─────────────────────────────────────────────
+  const diagnoseAll = async () => {
+    for (const c of CELLS) await diagnoseCell(c.id)
+  }
+  const setupAll = async () => {
+    for (const c of CELLS) {
+      await diagnoseCell(c.id)
+      if (c.kind === "dispense") await initializeCell(c.id)
+      else await tareCell(c.id)
+    }
+    toast.success("Phase setup complete")
+  }
+  const stopAll = () => {
+    for (const c of CELLS) {
+      setBusy(c.id, ALL_DEVS, false)
+      patchLive(c.id, (l) => ({ ...l, error: null }))
+      clientFor(c.id)
+        .stop()
+        .catch(() => {})
+    }
+    pushHist(selId, "STOP — all cells")
     toast.warning("STOP — all motion aborted")
   }
 
-  // ── Scenario / macro builder (snapshots the current right-tab config) ─────
-  const addStep = (label: string, op: Op) => {
-    setSteps((s) => [...s, { id: stepId, label, op }])
-    setStepId((n) => n + 1)
+  // ── derived state for the selected cell ───────────────────────────────
+  const selDef = CELLS.find((c) => c.id === selId) as CellDef
+  const sc = cells[selId]
+  const selBusy = sc.busy.pump || sc.busy.balance || sc.busy.stage
+  const ready = !selBusy && !sc.live.error
+  const canInit = ready && sc.diagnosed
+  const canDrive = ready && sc.initialized
+
+  const cellStateWord = (st: CellState): {
+    word: string
+    cls: string
+    fault: boolean
+  } => {
+    if (st.live.error)
+      return { word: "fault", cls: "text-status-fault", fault: true }
+    if (st.busy.pump || st.busy.balance || st.busy.stage)
+      return { word: "busy", cls: "text-status-warn", fault: false }
+    if (st.diagnosed) return { word: "ready", cls: "text-status-ok", fault: false }
+    return { word: "—", cls: "text-status-idle", fault: false }
   }
-  const runScenario = async () => {
-    setRunning(true)
-    pushHist(`Run scenario (${steps.length} steps)`)
-    try {
-      for (const s of steps) {
-        toast.info(`▶ ${s.label}`)
-        // Mark only the device this step uses busy (e.g. a prime step → pump).
-        await withBusy(stepDevs(s.op), () => runStep(s.op))
-        if (liveRef.current.error) {
-          toast.error("Scenario stopped — a step failed")
-          return
-        }
-      }
-      toast.success("Scenario complete")
-    } finally {
-      setRunning(false)
-    }
+
+  const histLabel = (h: HistEntry) => `${h.at} · ${h.label}`
+  const saveScenario = () => {
+    if (history.length === 0) return
+    const from = scenFrom || history[history.length - 1].label
+    const to = scenTo || history[0].label
+    setScenarios((s) => [
+      ...s,
+      { id: scenId.current++, name: scenName || `Scenario ${s.length + 1}`, from, to },
+    ])
+    setScenName("")
+    setScenFrom("")
+    setScenTo("")
+    toast.success("Scenario saved")
   }
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
+      {/* ── Phase header ─────────────────────────────────────────────── */}
       <header className="flex items-center gap-4 border-b px-4 py-2">
-        <h1 className="flex items-baseline gap-2 text-sm font-semibold tracking-tight">
-          {cell.name}
-          <span className="text-xs font-normal text-muted-foreground">
-            {cell.sub}
-          </span>
-          {cell.mock && (
-            <span className="rounded bg-status-warn/15 px-1.5 text-[10px] font-medium text-status-warn">
-              MOCK
-            </span>
-          )}
-        </h1>
-        <div className="flex items-center gap-3">
-          <StatusPill label="pump" state={conn.pump} />
-          <StatusPill label="balance" state={conn.balance} />
-          <StatusPill label="stage" state={conn.stage} />
-        </div>
+        <h1 className="text-sm font-semibold tracking-tight">Phase 1</h1>
+        <span className="text-xs text-muted-foreground">
+          3-solution synthesis · {CELLS.length} cells
+        </span>
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" onClick={setupAll} disabled={anyBusy || running}>
-            <Wand2 className="size-4" /> Setup
+          <Button size="sm" onClick={setupAll}>
+            <Wand2 className="size-4" /> Setup all
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={diagnose}
-            disabled={anyBusy || running}
-          >
-            <RefreshCw className="size-4" /> Diagnose
+          <Button variant="outline" size="sm" onClick={diagnoseAll}>
+            <RefreshCw className="size-4" /> Diagnose all
           </Button>
           <Dialog>
             <DialogTrigger
@@ -514,7 +540,7 @@ function CellDashboard({ cell, client }: { cell: CellDef; client: ApiClient }) {
               <DialogHeader>
                 <DialogTitle>Abort all motion?</DialogTitle>
                 <DialogDescription>
-                  Immediately stops the pump and stage. Use in an emergency.
+                  Immediately stops every cell. Use in an emergency.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -536,80 +562,106 @@ function CellDashboard({ cell, client }: { cell: CellDef; client: ApiClient }) {
       </header>
 
       <main className="grid gap-4 p-4 lg:grid-cols-[1fr_28rem]">
-        {/* ── Left: live + visualization + scenario ─────────────────── */}
+        {/* ── LEFT: Phase-wide monitoring ──────────────────────────── */}
         <div className="flex flex-col gap-4">
+          {/* Live — 15 readouts: {weight, valve, plunger, XZ gantry, state} × cell1–3 */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Activity className="size-4" /> Live
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-wrap items-start gap-8">
-              <Stat label="weight" value={`${live.weightG.toFixed(4)} g`} />
-              <Stat
-                label="valve"
-                value={`Path ${live.path} · P${live.aspPort}→P${live.dispPort}`}
-              />
-              <Stat label="plunger" value={`${live.plungerUL} µL`} />
-              <Stat label="XZ gantry" value={`${live.stageXmm} / ${live.stageZmm} mm`} />
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">state</span>
-                <div className="flex gap-4">
-                  {(["pump", "balance", "stage"] as const).map((d) => {
-                    const s = devState(d)
-                    return (
-                      <span key={d} className="flex flex-col">
-                        <span className="text-xs text-muted-foreground">{d}</span>
-                        <span className={`inline-flex items-center gap-1 font-medium ${s.cls}`}>
-                          {s.fault && <TriangleAlert className="size-3.5" aria-hidden />}
-                          {s.word}
-                        </span>
+            <CardContent className="grid grid-cols-3 gap-4">
+              {DISPENSE_CELLS.map((c, i) => {
+                const st = cells[c.id]
+                const sw = cellStateWord(st)
+                return (
+                  <div key={c.id} className="flex flex-col gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {c.name}
+                    </span>
+                    <Stat label={`weight ${i + 1}`} value={`${st.live.weightG.toFixed(4)} g`} />
+                    <Stat
+                      label={`valve ${i + 1}`}
+                      value={`Path ${st.live.path} · P${st.live.aspPort}→P${st.live.dispPort}`}
+                    />
+                    <Stat label={`plunger ${i + 1}`} value={`${st.live.plungerUL} µL`} />
+                    <Stat
+                      label={`XZ gantry ${i + 1}`}
+                      value={`${st.live.stageXmm.toFixed(0)} / ${st.live.stageZmm.toFixed(0)} mm`}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">{`state ${i + 1}`}</span>
+                      <span className={`inline-flex items-center gap-1 font-medium ${sw.cls}`}>
+                        {sw.fault && <TriangleAlert className="size-3.5" aria-hidden />}
+                        {sw.word}
                       </span>
-                    )
-                  })}
-                </div>
-              </div>
+                    </div>
+                  </div>
+                )
+              })}
             </CardContent>
           </Card>
 
+          {/* Visualization — 3 cell mini-views + the shared linear-motor track */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Eye className="size-4" /> Visualization
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-wrap items-center justify-start gap-10">
-              <div className="flex items-end gap-3">
-                <div className="flex flex-col items-center gap-1">
-                  <ValveDiagram
-                    path={live.path}
-                    connect={live.valveConnect}
-                    durMs={VALVE_MS}
-                  />
-                  <span className="text-xs text-muted-foreground">Valve</span>
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <PlungerView uL={live.plungerUL} durMs={plungerDurMs} />
-                  <span className="text-xs text-muted-foreground">Plunger</span>
-                </div>
+            <CardContent className="flex flex-col gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                {DISPENSE_CELLS.map((c, i) => {
+                  const lv = cells[c.id].live
+                  return (
+                    <div
+                      key={c.id}
+                      className="flex flex-col items-center gap-1 rounded border p-2"
+                    >
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {c.name} · {i + 1}
+                      </span>
+                      <div className="flex items-end gap-1">
+                        <ValveDiagram
+                          path={lv.path}
+                          connect={lv.valveConnect}
+                          durMs={VALVE_MS}
+                          className="h-20 w-20"
+                        />
+                        <PlungerView uL={lv.plungerUL} durMs={plungerDurMs} className="h-20 w-8" />
+                      </div>
+                      <div className="w-full">
+                        <StageView
+                          x={lv.stageXmm}
+                          z={lv.stageZmm}
+                          durMs={stageDurMs}
+                          ease={stageEase}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="w-full max-w-[200px]">
-                  <StageView
-                    x={live.stageXmm}
-                    z={live.stageZmm}
+              {WEIGH_CELL && (
+                <div className="rounded border p-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {WEIGH_CELL.name} · linear motor (balance shuttles under the cells)
+                  </span>
+                  <LinearTrack
+                    mm={cells[WEIGH_CELL.id].live.stageXmm}
+                    maxMm={X_MAX_MM}
+                    weightG={cells[WEIGH_CELL.id].live.weightG}
+                    cells={DISPENSE_CELLS.map((c) => c.name)}
                     durMs={stageDurMs}
                     ease={stageEase}
                   />
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  XZ gantry
-                </span>
-              </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* #1 Scenario / macro */}
+          {/* Scenario — register a History range as a named, reusable scenario */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
@@ -617,405 +669,411 @@ function CellDashboard({ cell, client }: { cell: CellDef; client: ApiClient }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    const o = dispenseOp()
-                    addStep(
-                      `Dispense ${o.v} µL · Path ${o.path} · P${o.asp}→P${o.disp}`,
-                      o,
-                    )
-                  }}
-                >
-                  <Plus className="size-3" /> Dispense
-                </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    const o = stageOp()
-                    addStep(`Stage → X ${o.x} / Z ${o.z} mm`, o)
-                  }}
-                >
-                  <Plus className="size-3" /> Stage move
-                </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    const o = primeOp()
-                    addStep(`Prime ×${o.n} (${SYRINGE_UL} µL)`, o)
-                  }}
-                >
-                  <Plus className="size-3" /> Prime
-                </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => addStep("Tare", { kind: "tare" })}
-                >
-                  <Plus className="size-3" /> Tare
-                </Button>
-              </div>
-              <ol className="flex flex-col gap-1">
-                {steps.length === 0 ? (
-                  <li className="text-xs text-muted-foreground">
-                    no steps — add from the current configuration above
-                  </li>
-                ) : (
-                  steps.map((s, i) => (
-                    <li
-                      key={s.id}
-                      className="flex items-center justify-between rounded border px-2 py-1 text-sm"
-                    >
-                      <span>
-                        <span className="text-muted-foreground">{i + 1}.</span> {s.label}
-                      </span>
-                      <Button
-                        size="icon-xs"
-                        variant="ghost"
-                        onClick={() => setSteps((st) => st.filter((x) => x.id !== s.id))}
-                      >
-                        <Trash2 className="size-3" />
-                      </Button>
-                    </li>
-                  ))
-                )}
-              </ol>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={runScenario}
-                  disabled={!canDrive || steps.length === 0}
-                >
-                  <Play className="size-4" /> Run scenario
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSteps([])}
-                  disabled={steps.length === 0}
-                >
-                  Clear
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ── Right: device control tabs + history ──────────────────── */}
-        <div className="flex flex-col gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <Tabs defaultValue="pump">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="balance">
-                  <Scale className="size-4" /> Balance
-                </TabsTrigger>
-                <TabsTrigger value="pump">
-                  <Beaker className="size-4" /> Pump
-                </TabsTrigger>
-                <TabsTrigger value="stage">
-                  <Move3d className="size-4" /> XZ gantry
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="balance" className="flex flex-col gap-3 pt-3">
-                <Button onClick={tare} disabled={!ready || conn.balance !== "ok"}>
-                  Tare
-                </Button>
+              <span className="text-xs text-muted-foreground">
+                Pick a start/end from the command History below and save the
+                span as a scenario (you can register several).
+              </span>
+              <div className="flex flex-wrap items-end gap-2">
                 <div className="flex flex-col gap-1">
-                  <Label>Ambient filter</Label>
-                  <Select defaultValue="very_unstable" disabled={!ready}>
-                    <SelectTrigger>
-                      <SelectValue />
+                  <Label className="text-xs">From</Label>
+                  <Select value={scenFrom} onValueChange={(v) => setScenFrom(v ?? "")}>
+                    <SelectTrigger className="h-8 w-44">
+                      <SelectValue placeholder="(oldest)" />
                     </SelectTrigger>
                     <SelectContent>
-                      {AMBIENT_LEVELS.map((lv) => (
-                        <SelectItem key={lv} value={lv}>
-                          {lv}
+                      {history.map((h) => (
+                        <SelectItem key={h.id} value={h.label}>
+                          {histLabel(h)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="text-xs text-muted-foreground">
-                    How hard the balance filters vibration before declaring a
-                    stable reading. Looser (unstable / very_unstable) settles
-                    faster in a noisy setup; tighter (stable) is more accurate
-                    on a steady bench.
-                  </span>
                 </div>
-              </TabsContent>
-
-              <TabsContent value="pump" className="flex flex-col gap-3 pt-3">
-                <Button onClick={initialize} disabled={!canInit}>
-                  Initialize
-                </Button>
-
-                <Separator />
-                {/* #5 Valve routing: Path + asp/disp ports (Port 1 / 3 only) */}
                 <div className="flex flex-col gap-1">
-                  <Label>Path</Label>
-                  <div className="flex gap-2">
-                    {[1, 2].map((p) => (
+                  <Label className="text-xs">To</Label>
+                  <Select value={scenTo} onValueChange={(v) => setScenTo(v ?? "")}>
+                    <SelectTrigger className="h-8 w-44">
+                      <SelectValue placeholder="(newest)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {history.map((h) => (
+                        <SelectItem key={h.id} value={h.label}>
+                          {histLabel(h)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input
+                  value={scenName}
+                  onChange={(e) => setScenName(e.target.value)}
+                  placeholder="scenario name"
+                  className="h-8 w-40"
+                />
+                <Button size="sm" onClick={saveScenario} disabled={history.length === 0}>
+                  <Plus className="size-4" /> Save
+                </Button>
+              </div>
+
+              {scenarios.length > 0 && (
+                <ol className="flex flex-col gap-1">
+                  {scenarios.map((s) => (
+                    <li
+                      key={s.id}
+                      className="flex items-center justify-between rounded border px-2 py-1 text-sm"
+                    >
+                      <span className="truncate">
+                        <span className="font-medium">{s.name}</span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          — {s.from} → {s.to}
+                        </span>
+                      </span>
                       <Button
-                        key={p}
-                        size="sm"
-                        variant={live.path === p ? "default" : "outline"}
-                        disabled={!canDrive}
-                        onClick={() => setPath(p as 1 | 2)}
+                        size="icon-xs"
+                        variant="ghost"
+                        onClick={() =>
+                          setScenarios((ss) => ss.filter((x) => x.id !== s.id))
+                        }
                       >
-                        Path {p}
+                        <Trash2 className="size-3" />
                       </Button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <Label>Aspirate port</Label>
-                    <div className="flex gap-2">
-                      {[1, 3].map((p) => (
-                        <Button
-                          key={p}
-                          size="sm"
-                          variant={live.aspPort === p ? "default" : "outline"}
-                          disabled={!canDrive}
-                          onClick={() => setAsp(p as Port)}
-                        >
-                          Port {p}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Label>Dispense port</Label>
-                    <div className="flex gap-2">
-                      {[1, 3].map((p) => (
-                        <Button
-                          key={p}
-                          size="sm"
-                          variant={live.dispPort === p ? "default" : "outline"}
-                          disabled={!canDrive}
-                          onClick={() => setDisp(p as Port)}
-                        >
-                          Port {p}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="vol" className="text-xs">
-                    Volume (µL)
-                  </Label>
-                  <Input
-                    id="vol"
-                    value={volume}
-                    onChange={(e) => setVolume(e.target.value)}
-                    className="h-7 w-24"
-                  />
-                  <span className="text-xs text-muted-foreground">0–{SYRINGE_UL}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="pspd" className="text-xs">
-                    Speed (%)
-                  </Label>
-                  <Input
-                    id="pspd"
-                    value={pumpSpeedPct}
-                    onChange={(e) => setPumpSpeedPct(e.target.value)}
-                    className="h-7 w-24"
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    max {MAX_UL_S.toFixed(1)} µL/s
-                  </span>
-                </div>
-                <Button onClick={activation} disabled={!canDrive}>
-                  <Droplet className="size-4" /> Activation
-                </Button>
-                {!canDrive && (
-                  <span className="inline-flex items-center gap-1 text-xs text-status-warn">
-                    <TriangleAlert className="size-3" aria-hidden />
-                    requires Initialize + ready
-                  </span>
-                )}
+                    </li>
+                  ))}
+                </ol>
+              )}
 
-                <Separator />
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="prime">Prime · full stroke ({SYRINGE_UL} µL)</Label>
+              <Separator />
+              <span className="text-xs text-muted-foreground">History (newest first)</span>
+              <ol className="flex max-h-52 flex-col gap-1 overflow-auto">
+                {history.length === 0 ? (
+                  <li className="text-xs text-muted-foreground">no commands yet</li>
+                ) : (
+                  history.map((h) => (
+                    <li
+                      key={h.id}
+                      className="flex items-center gap-2 rounded border px-2 py-1 text-sm"
+                    >
+                      <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                        {h.at}
+                      </span>
+                      <span>{h.label}</span>
+                    </li>
+                  ))
+                )}
+              </ol>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── RIGHT: cell switcher + selected cell's 2 device tabs ─────── */}
+        <Card>
+          <CardContent className="pt-6">
+            {/* cell switcher */}
+            <div className="mb-3 flex flex-wrap gap-1">
+              {CELLS.map((c) => {
+                const sw = cellStateWord(cells[c.id])
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelId(c.id)}
+                    className={`flex flex-col rounded px-3 py-1 text-left text-xs transition ${
+                      c.id === selId
+                        ? "bg-muted ring-1 ring-border"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    <span className={`text-[10px] ${sw.cls}`}>{sw.word}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mb-3 text-xs text-muted-foreground">
+              {selDef.name} · {selDef.sub}
+              {sc.live.error && (
+                <span className="ml-2 inline-flex items-center gap-1 text-status-fault">
+                  <TriangleAlert className="size-3" /> {sc.live.error}
+                </span>
+              )}
+            </div>
+
+            {selDef.kind === "dispense" ? (
+              <Tabs defaultValue="pump">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="pump">
+                    <Beaker className="size-4" /> Pump
+                  </TabsTrigger>
+                  <TabsTrigger value="gantry">
+                    <Move3d className="size-4" /> XZ gantry
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="pump" className="flex flex-col gap-3 pt-3">
+                  <Button onClick={() => initializeCell(selId)} disabled={!canInit}>
+                    Initialize
+                  </Button>
+                  <Separator />
+                  <div className="flex flex-col gap-1">
+                    <Label>Path</Label>
+                    <div className="flex gap-2">
+                      {[1, 2].map((p) => (
+                        <Button
+                          key={p}
+                          size="sm"
+                          variant={sc.live.path === p ? "default" : "outline"}
+                          disabled={!canDrive}
+                          onClick={() => setPath(p as 1 | 2)}
+                        >
+                          Path {p}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <Label>Aspirate port</Label>
+                      <div className="flex gap-2">
+                        {[1, 3].map((p) => (
+                          <Button
+                            key={p}
+                            size="sm"
+                            variant={sc.live.aspPort === p ? "default" : "outline"}
+                            disabled={!canDrive}
+                            onClick={() => setAsp(p as Port)}
+                          >
+                            Port {p}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label>Dispense port</Label>
+                      <div className="flex gap-2">
+                        {[1, 3].map((p) => (
+                          <Button
+                            key={p}
+                            size="sm"
+                            variant={sc.live.dispPort === p ? "default" : "outline"}
+                            disabled={!canDrive}
+                            onClick={() => setDisp(p as Port)}
+                          >
+                            Port {p}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
+                    <Label htmlFor="vol" className="text-xs">
+                      Volume (µL)
+                    </Label>
                     <Input
-                      id="prime"
-                      value={primeCycles}
-                      onChange={(e) => setPrimeCycles(e.target.value)}
-                      className="h-7 w-16"
+                      id="vol"
+                      value={volume}
+                      onChange={(e) => setVolume(e.target.value)}
+                      className="h-7 w-24"
                     />
-                    <span className="text-xs text-muted-foreground">cycles (1–10)</span>
-                    <Button size="sm" variant="outline" onClick={prime} disabled={!canDrive}>
-                      <RotateCw className="size-4" /> Prime
+                    <span className="text-xs text-muted-foreground">0–{SYRINGE_UL}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="pspd" className="text-xs">
+                      Speed (%)
+                    </Label>
+                    <Input
+                      id="pspd"
+                      value={pumpSpeedPct}
+                      onChange={(e) => setPumpSpeedPct(e.target.value)}
+                      className="h-7 w-24"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      max {MAX_UL_S.toFixed(1)} µL/s
+                    </span>
+                  </div>
+                  <Button onClick={activation} disabled={!canDrive}>
+                    <Droplet className="size-4" /> Activation
+                  </Button>
+                  <Separator />
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="prime">Prime · full stroke ({SYRINGE_UL} µL)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="prime"
+                        value={primeCycles}
+                        onChange={(e) => setPrimeCycles(e.target.value)}
+                        className="h-7 w-16"
+                      />
+                      <span className="text-xs text-muted-foreground">cycles (1–10)</span>
+                      <Button size="sm" variant="outline" onClick={prime} disabled={!canDrive}>
+                        <RotateCw className="size-4" /> Prime
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="gantry" className="flex flex-col gap-3 pt-3">
+                  <div className="flex flex-col gap-1">
+                    <Button onClick={homeStage} disabled={!ready || sc.conn.stage !== "ok"}>
+                      Home
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Homing speed: {((HOME_RPM * 10) / 60).toFixed(0)} mm/s (fixed)
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-end gap-2">
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="spd" className="text-xs">
+                        Speed (%) · max {MAX_MM_S.toFixed(0)} mm/s
+                      </Label>
+                      <Input
+                        id="spd"
+                        value={speedPct}
+                        onChange={(e) => setSpeedPct(e.target.value)}
+                        className="w-24"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="acc" className="text-xs">
+                        Accel (%) · 0 = instant
+                      </Label>
+                      <Input
+                        id="acc"
+                        value={accelPct}
+                        onChange={(e) => setAccelPct(e.target.value)}
+                        className="w-24"
+                      />
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex items-end gap-2">
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="x" className="text-xs">
+                        X (mm) · 0–{X_MAX_MM}
+                      </Label>
+                      <Input
+                        id="x"
+                        value={xTarget}
+                        onChange={(e) => setXTarget(e.target.value)}
+                        className="w-24"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="z" className="text-xs">
+                        Z (mm) · 0–{Z_MAX_MM}
+                      </Label>
+                      <Input
+                        id="z"
+                        value={zTarget}
+                        onChange={(e) => setZTarget(e.target.value)}
+                        className="w-24"
+                      />
+                    </div>
+                    <Button size="sm" disabled={!ready || sc.conn.stage !== "ok"} onClick={moveStage}>
+                      Move
                     </Button>
                   </div>
-                </div>
-              </TabsContent>
+                  <span className="text-xs text-muted-foreground">
+                    Motion order: up → X → down (never diagonal).
+                  </span>
+                </TabsContent>
+              </Tabs>
+            ) : (
+              // ── weigh cell (cell4): Balance + Linear Y ──
+              <Tabs defaultValue="balance">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="balance">
+                    <Scale className="size-4" /> Balance
+                  </TabsTrigger>
+                  <TabsTrigger value="linear">
+                    <Ruler className="size-4" /> Linear Y
+                  </TabsTrigger>
+                </TabsList>
 
-              <TabsContent value="stage" className="flex flex-col gap-3 pt-3">
-                <div className="flex flex-col gap-1">
-                  <Button onClick={homeStage} disabled={!ready || conn.stage !== "ok"}>
+                <TabsContent value="balance" className="flex flex-col gap-3 pt-3">
+                  <Stat label="weight" value={`${sc.live.weightG.toFixed(4)} g`} />
+                  <Button onClick={() => tareCell(selId)} disabled={!ready}>
+                    Tare
+                  </Button>
+                  <div className="flex flex-col gap-1">
+                    <Label>Ambient filter</Label>
+                    <Select
+                      defaultValue="very_unstable"
+                      disabled={!ready}
+                      onValueChange={(v) => v && setAmbientCell(selId, v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AMBIENT_LEVELS.map((lv) => (
+                          <SelectItem key={lv} value={lv}>
+                            {lv}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">
+                      How hard the balance filters vibration before declaring a
+                      stable reading.
+                    </span>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="linear" className="flex flex-col gap-3 pt-3">
+                  <Button onClick={linearHome} disabled={!ready}>
                     Home
                   </Button>
+                  <Separator />
+                  <div className="flex items-end gap-2">
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="lspd" className="text-xs">
+                        Speed (%) · max {MAX_MM_S.toFixed(0)} mm/s
+                      </Label>
+                      <Input
+                        id="lspd"
+                        value={speedPct}
+                        onChange={(e) => setSpeedPct(e.target.value)}
+                        className="w-24"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="lacc" className="text-xs">
+                        Accel (%) · 0 = instant
+                      </Label>
+                      <Input
+                        id="lacc"
+                        value={accelPct}
+                        onChange={(e) => setAccelPct(e.target.value)}
+                        className="w-24"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="y" className="text-xs">
+                        Y (mm) · 0–{X_MAX_MM}
+                      </Label>
+                      <Input
+                        id="y"
+                        value={yTarget}
+                        onChange={(e) => setYTarget(e.target.value)}
+                        className="w-24"
+                      />
+                    </div>
+                    <Button size="sm" onClick={linearMove} disabled={!ready}>
+                      Move
+                    </Button>
+                  </div>
                   <span className="text-xs text-muted-foreground">
-                    Homing speed: {HOME_MM_S.toFixed(0)} mm/s (fixed) · Z up → X
+                    Moves the balance under a cell to weigh its dispense.
                   </span>
-                </div>
-                <Separator />
-                <div className="flex items-end gap-2">
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="spd" className="text-xs">
-                      Speed (%) · max {MAX_MM_S.toFixed(0)} mm/s
-                    </Label>
-                    <Input
-                      id="spd"
-                      value={speedPct}
-                      onChange={(e) => setSpeedPct(e.target.value)}
-                      className="w-24"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="acc" className="text-xs">
-                      Accel (%) · 0 = instant
-                    </Label>
-                    <Input
-                      id="acc"
-                      value={accelPct}
-                      onChange={(e) => setAccelPct(e.target.value)}
-                      className="w-24"
-                    />
-                  </div>
-                </div>
-                <Separator />
-                <div className="flex items-end gap-2">
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="x" className="text-xs">
-                      X (mm) · 0–{X_MAX_MM}
-                    </Label>
-                    <Input
-                      id="x"
-                      value={xTarget}
-                      onChange={(e) => setXTarget(e.target.value)}
-                      className="w-24"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="z" className="text-xs">
-                      Z (mm) · 0–{Z_MAX_MM}
-                    </Label>
-                    <Input
-                      id="z"
-                      value={zTarget}
-                      onChange={(e) => setZTarget(e.target.value)}
-                      className="w-24"
-                    />
-                  </div>
-                  <Button size="sm" disabled={!ready || conn.stage !== "ok"} onClick={moveStage}>
-                    Move
-                  </Button>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  Motion order: up → X → down (never diagonal).
-                </span>
-              </TabsContent>
-            </Tabs>
+                </TabsContent>
+              </Tabs>
+            )}
           </CardContent>
         </Card>
-
-        {/* History — issued commands, kept beside the controls that make them */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <HistoryIcon className="size-4" /> History
-            </CardTitle>
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => setHistory([])}
-              disabled={history.length === 0}
-            >
-              <Trash2 className="size-3" /> Clear
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <ol className="flex max-h-72 flex-col gap-1 overflow-auto">
-              {history.length === 0 ? (
-                <li className="text-xs text-muted-foreground">no commands yet</li>
-              ) : (
-                history.map((h) => (
-                  <li
-                    key={h.id}
-                    className="flex items-center gap-2 rounded border px-2 py-1 text-sm"
-                  >
-                    <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                      {h.at}
-                    </span>
-                    <span>{h.label}</span>
-                  </li>
-                ))
-              )}
-            </ol>
-          </CardContent>
-        </Card>
-        </div>
       </main>
-    </div>
-  )
-}
-
-// ── Phase shell: one web for the whole Phase. A cell selector across the top
-//    switches which cell's dashboard is shown. Each cell gets its own client
-//    — a per-cell in-memory mock for now (cell hardware/backends not wired);
-//    flip a cell to mock:false in lib/cells.ts to use the real /v1 backend.
-export default function App() {
-  const [selId, setSelId] = useState(CELLS[0].id)
-  const clientsRef = useRef<Map<string, ApiClient>>(new Map())
-  const sel = CELLS.find((c) => c.id === selId) ?? CELLS[0]
-
-  const clientFor = (c: CellDef): ApiClient => {
-    if (!c.mock) return api
-    let cl = clientsRef.current.get(c.id)
-    if (!cl) {
-      cl = makeMockClient()
-      clientsRef.current.set(c.id, cl)
-    }
-    return cl
-  }
-
-  return (
-    <div className="min-h-dvh bg-background text-foreground">
-      <nav className="flex items-center gap-2 overflow-x-auto border-b bg-muted/40 px-4 py-1.5">
-        <span className="shrink-0 text-sm font-semibold tracking-tight">Phase 1</span>
-        <span className="shrink-0 text-muted-foreground">·</span>
-        {CELLS.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setSelId(c.id)}
-            className={`shrink-0 rounded px-3 py-1 text-left text-xs transition ${
-              c.id === selId
-                ? "bg-background shadow-sm ring-1 ring-border"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <span className="block font-medium">
-              {c.name}
-              {c.mock && <span className="ml-1 text-status-warn">●</span>}
-            </span>
-            <span className="block text-[10px] text-muted-foreground">{c.sub}</span>
-          </button>
-        ))}
-      </nav>
-      {/* key={sel.id} remounts the dashboard per cell so its UI state is
-          isolated; the mock client (device state) persists in clientsRef. */}
-      <CellDashboard key={sel.id} cell={sel} client={clientFor(sel)} />
     </div>
   )
 }

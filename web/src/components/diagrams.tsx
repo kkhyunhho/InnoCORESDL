@@ -11,10 +11,12 @@ export function ValveDiagram({
   path,
   connect,
   durMs,
+  className = "h-40 w-40",
 }: {
   path: 1 | 2
   connect: Port
   durMs: number
+  className?: string
 }) {
   type Pt = { x: number; y: number }
   const C: Pt = { x: 70, y: 116 } // 6 o'clock (common)
@@ -53,7 +55,7 @@ export function ValveDiagram({
     />
   )
   return (
-    <svg viewBox="0 0 140 140" className="h-40 w-40">
+    <svg viewBox="0 0 140 140" className={className}>
       <circle cx="70" cy="70" r="52" className="fill-muted stroke-border" />
       {/* rotor: both channels turn together, shortest path, manual-timed */}
       <g
@@ -102,7 +104,15 @@ export function ValveDiagram({
 }
 
 // ── Plunger fill (syringe on the C port): liquid level = plungerUL. ─────────
-export function PlungerView({ uL, durMs }: { uL: number; durMs: number }) {
+export function PlungerView({
+  uL,
+  durMs,
+  className = "h-40 w-16",
+}: {
+  uL: number
+  durMs: number
+  className?: string
+}) {
   const frac = clamp(uL / SYRINGE_UL, 0, 1)
   const x = 22
   const w = 24
@@ -110,7 +120,7 @@ export function PlungerView({ uL, durMs }: { uL: number; durMs: number }) {
   const h = 88
   const fillH = frac * h
   return (
-    <svg viewBox="0 0 70 140" className="h-40 w-16">
+    <svg viewBox="0 0 70 140" className={className}>
       <rect x={x} y={top} width={w} height={h} rx="3" className="fill-card stroke-border" />
       <rect
         x={x}
@@ -171,6 +181,67 @@ export function StageView({
       </g>
       <text x={railL} y={H - 6} fontSize="9" className="fill-muted-foreground">
         X {x.toFixed(0)} / Z {z.toFixed(0)} mm — up → X → down
+      </text>
+    </svg>
+  )
+}
+
+// ── Linear-motor track: the single balance rides a long Y rail and shuttles
+//    under cell1–3 to weigh each dispense. `mm`/`maxMm` place the carriage;
+//    `cells` are the stop labels under which it parks. ───────────────────────
+export function LinearTrack({
+  mm,
+  maxMm,
+  weightG,
+  cells,
+  durMs = 500,
+  ease = "ease",
+}: {
+  mm: number
+  maxMm: number
+  weightG: number
+  cells: string[]
+  durMs?: number
+  ease?: string
+}) {
+  const W = 600
+  const H = 76
+  const x0 = 40
+  const x1 = W - 40
+  const railY = 50
+  const frac = clamp(mm / maxMm, 0, 1)
+  const cx = x0 + frac * (x1 - x0)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      {/* rail */}
+      <line x1={x0} y1={railY} x2={x1} y2={railY} className="stroke-border" strokeWidth={4} />
+      {cells.map((name, i) => {
+        const f = (i + 0.5) / cells.length
+        const tx = x0 + f * (x1 - x0)
+        return (
+          <g key={name}>
+            <line x1={tx} y1={railY - 7} x2={tx} y2={railY + 7} className="stroke-border" strokeWidth={2} />
+            <text x={tx} y={railY + 20} textAnchor="middle" fontSize="10" className="fill-muted-foreground">
+              {name}
+            </text>
+          </g>
+        )
+      })}
+      {/* balance carriage (drawn at x0, translated to cx) */}
+      <g
+        style={{
+          transform: `translateX(${cx - x0}px)`,
+          transition: `transform ${durMs}ms ${ease}`,
+        }}
+      >
+        <rect x={x0 - 22} y={railY - 26} width={44} height={18} rx={3} fill={OK} />
+        <text x={x0} y={railY - 13} textAnchor="middle" fontSize="9" fill="#fff">
+          {weightG.toFixed(3)} g
+        </text>
+        <rect x={x0 - 5} y={railY - 8} width={10} height={8} className="fill-border" />
+      </g>
+      <text x={x0} y={H - 4} fontSize="9" className="fill-muted-foreground">
+        linear Y {mm.toFixed(0)} mm
       </text>
     </svg>
   )
