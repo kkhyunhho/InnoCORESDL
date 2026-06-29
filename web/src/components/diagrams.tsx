@@ -205,8 +205,8 @@ export function LinearTrack({
   ease?: string
 }) {
   const W = 600
-  const H = 76
-  const railY = 50
+  const H = 50 // thin + long
+  const railY = 30
   // Tick i sits at the SAME (i+0.5)/n fraction of the full width as cell i's
   // centre in the gap-0 grid above, so the stops line up under the gantries.
   const tickX = (i: number) => ((i + 0.5) / cells.length) * W
@@ -217,13 +217,13 @@ export function LinearTrack({
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
       {/* rail spans first→last tick */}
-      <line x1={x0} y1={railY} x2={x1} y2={railY} className="stroke-border" strokeWidth={4} />
+      <line x1={x0} y1={railY} x2={x1} y2={railY} className="stroke-border" strokeWidth={3} />
       {cells.map((name, i) => {
         const tx = tickX(i)
         return (
           <g key={name}>
-            <line x1={tx} y1={railY - 7} x2={tx} y2={railY + 7} className="stroke-border" strokeWidth={2} />
-            <text x={tx} y={railY + 20} textAnchor="middle" fontSize="10" className="fill-muted-foreground">
+            <line x1={tx} y1={railY - 5} x2={tx} y2={railY + 5} className="stroke-border" strokeWidth={2} />
+            <text x={tx} y={railY + 16} textAnchor="middle" fontSize="9" className="fill-muted-foreground">
               {name}
             </text>
           </g>
@@ -236,15 +236,12 @@ export function LinearTrack({
           transition: `transform ${durMs}ms ${ease}`,
         }}
       >
-        <rect x={x0 - 22} y={railY - 26} width={44} height={18} rx={3} fill={OK} />
-        <text x={x0} y={railY - 13} textAnchor="middle" fontSize="9" fill="#fff">
+        <rect x={x0 - 20} y={railY - 19} width={40} height={13} rx={3} fill={OK} />
+        <text x={x0} y={railY - 10} textAnchor="middle" fontSize="8" fill="#fff">
           {weightG.toFixed(3)} g
         </text>
-        <rect x={x0 - 5} y={railY - 8} width={10} height={8} className="fill-border" />
+        <rect x={x0 - 4} y={railY - 6} width={8} height={6} className="fill-border" />
       </g>
-      <text x={x0} y={H - 4} fontSize="9" className="fill-muted-foreground">
-        linear Y {mm.toFixed(0)} mm
-      </text>
     </svg>
   )
 }

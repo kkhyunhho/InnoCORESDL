@@ -106,6 +106,28 @@ const newCellState = (): CellState => ({
   initialized: false,
 })
 
+// Control-panel inputs, remembered per cell.
+interface Inputs {
+  volume: string
+  pumpSpeedPct: string
+  primeCycles: string
+  xTarget: string
+  zTarget: string
+  yTarget: string
+  speedPct: string
+  accelPct: string
+}
+const newInputs = (): Inputs => ({
+  volume: "100",
+  pumpSpeedPct: "60",
+  primeCycles: "3",
+  xTarget: "261.5",
+  zTarget: "234.0",
+  yTarget: "150",
+  speedPct: "20",
+  accelPct: "50",
+})
+
 const ALL_DEVS: Dev[] = ["pump", "balance", "stage"]
 const DISPENSE_CELLS = CELLS.filter((c) => c.kind === "dispense")
 const WEIGH_CELL = CELLS.find((c) => c.kind === "weigh")
@@ -136,15 +158,10 @@ export default function App() {
     return cl
   }
 
-  // Shared control inputs (the right panel controls one cell at a time).
-  const [volume, setVolume] = useState("100")
-  const [pumpSpeedPct, setPumpSpeedPct] = useState("60")
-  const [primeCycles, setPrimeCycles] = useState("3")
-  const [xTarget, setXTarget] = useState("261.5")
-  const [zTarget, setZTarget] = useState("234.0")
-  const [yTarget, setYTarget] = useState("150")
-  const [speedPct, setSpeedPct] = useState("20")
-  const [accelPct, setAccelPct] = useState("50")
+  // Control inputs, remembered per cell.
+  const [inputs, setInputs] = useState<Record<string, Inputs>>(() =>
+    Object.fromEntries(CELLS.map((c) => [c.id, newInputs()])),
+  )
 
   // Shared animation knobs (only the active cell animates at a time).
   const [stageDurMs, setStageDurMs] = useState(500)
@@ -383,44 +400,50 @@ export default function App() {
 
   // cell4 linear Y: single axis, mapped onto stageXmm.
   const doLinearMove = async (id: string, yMm: number) => {
+    const inI = inputs[id]
     const y = clamp(yMm, 0, X_MAX_MM)
-    const rpm = (clamp(Number(speedPct) || 0, 1, 100) / 100) * MAX_RPM
-    const acc = Math.round((clamp(Number(accelPct) || 0, 0, 100) / 100) * 255)
+    const rpm = (clamp(Number(inI.speedPct) || 0, 1, 100) / 100) * MAX_RPM
+    const acc = Math.round((clamp(Number(inI.accelPct) || 0, 0, 100) / 100) * 255)
     setStageEase(acc === 0 ? "linear" : "ease")
     await stageSeg(y - cellsRef.current[id].live.stageXmm, rpm, acc, () =>
       patchLive(id, (l) => ({ ...l, stageXmm: y })),
     )
-    await clientFor(id).stageMove(y, 0, Number(speedPct) || 20, acc)
+    await clientFor(id).stageMove(y, 0, Number(inI.speedPct) || 20, acc)
     toast.success(`${cellName(id)} linear Y → ${y} mm`)
   }
 
   const cellName = (id: string) => CELLS.find((c) => c.id === id)?.name ?? id
 
-  // ── op param snapshots from the shared inputs + the cell's valve config ──
+  // ── op param snapshots from the cell's own inputs + valve config ──────
   const dispenseOp = (id: string): Extract<Op, { kind: "dispense" }> => {
     const lv = cellsRef.current[id].live
+    const inI = inputs[id]
     return {
       kind: "dispense",
-      v: clamp(Number(volume) || 0, 0, SYRINGE_UL),
+      v: clamp(Number(inI.volume) || 0, 0, SYRINGE_UL),
       asp: lv.aspPort,
       disp: lv.dispPort,
       path: lv.path,
-      pumpPct: clamp(Number(pumpSpeedPct) || 0, 1, 100),
+      pumpPct: clamp(Number(inI.pumpSpeedPct) || 0, 1, 100),
     }
   }
-  const stageOp = (): Extract<Op, { kind: "stage" }> => ({
-    kind: "stage",
-    x: clamp(Number(xTarget) || 0, 0, X_MAX_MM),
-    z: clamp(Number(zTarget) || 0, 0, Z_MAX_MM),
-    sPct: clamp(Number(speedPct) || 0, 1, 100),
-    aPct: clamp(Number(accelPct) || 0, 0, 100),
-  })
+  const stageOp = (id: string): Extract<Op, { kind: "stage" }> => {
+    const inI = inputs[id]
+    return {
+      kind: "stage",
+      x: clamp(Number(inI.xTarget) || 0, 0, X_MAX_MM),
+      z: clamp(Number(inI.zTarget) || 0, 0, Z_MAX_MM),
+      sPct: clamp(Number(inI.speedPct) || 0, 1, 100),
+      aPct: clamp(Number(inI.accelPct) || 0, 0, 100),
+    }
+  }
   const primeOp = (id: string): Extract<Op, { kind: "prime" }> => {
     const lv = cellsRef.current[id].live
+    const inI = inputs[id]
     return {
       kind: "prime",
-      n: clamp(Number(primeCycles) || 1, 1, 10),
-      pumpPct: clamp(Number(pumpSpeedPct) || 0, 1, 100),
+      n: clamp(Number(inI.primeCycles) || 1, 1, 10),
+      pumpPct: clamp(Number(inI.pumpSpeedPct) || 0, 1, 100),
       src: lv.aspPort,
       disp: lv.dispPort,
     }
@@ -442,7 +465,7 @@ export default function App() {
     return withBusy(selId, ["pump"], () => doPrime(selId, op))
   }
   const moveStage = () => {
-    const op = stageOp()
+    const op = stageOp(selId)
     pushHist(selId, `Gantry → X ${op.x} / Z ${op.z} mm`, {
       kind: "stage",
       cell: selId,
@@ -455,7 +478,7 @@ export default function App() {
     return withBusy(selId, ["stage"], () => doHome(selId))
   }
   const linearMove = () => {
-    const y = clamp(Number(yTarget) || 0, 0, X_MAX_MM)
+    const y = clamp(Number(inputs[selId].yTarget) || 0, 0, X_MAX_MM)
     pushHist(selId, `Linear Y → ${y} mm`, { kind: "linear", cell: selId, y })
     return withBusy(selId, ["stage"], () => doLinearMove(selId, y))
   }
@@ -538,6 +561,9 @@ export default function App() {
   // ── derived state for the selected cell ───────────────────────────────
   const selDef = CELLS.find((c) => c.id === selId) as CellDef
   const sc = cells[selId]
+  const inp = inputs[selId]
+  const setInput = (k: keyof Inputs, v: string) =>
+    setInputs((is) => ({ ...is, [selId]: { ...is[selId], [k]: v } }))
   const selBusy = sc.busy.pump || sc.busy.balance || sc.busy.stage
   const ready = !selBusy && !sc.live.error && !running
   const canInit = ready && sc.diagnosed
@@ -727,8 +753,9 @@ export default function App() {
                     ease={stageEase}
                   />
                   <span className="text-xs text-muted-foreground">
-                    {WEIGH_CELL.name} · linear motor — the single balance
-                    shuttles under cell1–3 to weigh each dispense
+                    {WEIGH_CELL.name} · linear motor (Y{" "}
+                    {cells[WEIGH_CELL.id].live.stageXmm.toFixed(0)} mm) — the
+                    single balance shuttles under cell1–3 to weigh each dispense
                   </span>
                 </>
               )}
@@ -954,8 +981,8 @@ export default function App() {
                     </Label>
                     <Input
                       id="vol"
-                      value={volume}
-                      onChange={(e) => setVolume(e.target.value)}
+                      value={inp.volume}
+                      onChange={(e) => setInput("volume", e.target.value)}
                       className="h-7 w-24"
                     />
                     <span className="text-xs text-muted-foreground">0–{SYRINGE_UL}</span>
@@ -966,8 +993,8 @@ export default function App() {
                     </Label>
                     <Input
                       id="pspd"
-                      value={pumpSpeedPct}
-                      onChange={(e) => setPumpSpeedPct(e.target.value)}
+                      value={inp.pumpSpeedPct}
+                      onChange={(e) => setInput("pumpSpeedPct", e.target.value)}
                       className="h-7 w-24"
                     />
                     <span className="text-xs text-muted-foreground">
@@ -983,8 +1010,8 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <Input
                         id="prime"
-                        value={primeCycles}
-                        onChange={(e) => setPrimeCycles(e.target.value)}
+                        value={inp.primeCycles}
+                        onChange={(e) => setInput("primeCycles", e.target.value)}
                         className="h-7 w-16"
                       />
                       <span className="text-xs text-muted-foreground">cycles (1–10)</span>
@@ -1012,8 +1039,8 @@ export default function App() {
                       </Label>
                       <Input
                         id="spd"
-                        value={speedPct}
-                        onChange={(e) => setSpeedPct(e.target.value)}
+                        value={inp.speedPct}
+                        onChange={(e) => setInput("speedPct", e.target.value)}
                         className="w-24"
                       />
                     </div>
@@ -1023,8 +1050,8 @@ export default function App() {
                       </Label>
                       <Input
                         id="acc"
-                        value={accelPct}
-                        onChange={(e) => setAccelPct(e.target.value)}
+                        value={inp.accelPct}
+                        onChange={(e) => setInput("accelPct", e.target.value)}
                         className="w-24"
                       />
                     </div>
@@ -1037,8 +1064,8 @@ export default function App() {
                       </Label>
                       <Input
                         id="x"
-                        value={xTarget}
-                        onChange={(e) => setXTarget(e.target.value)}
+                        value={inp.xTarget}
+                        onChange={(e) => setInput("xTarget", e.target.value)}
                         className="w-24"
                       />
                     </div>
@@ -1048,8 +1075,8 @@ export default function App() {
                       </Label>
                       <Input
                         id="z"
-                        value={zTarget}
-                        onChange={(e) => setZTarget(e.target.value)}
+                        value={inp.zTarget}
+                        onChange={(e) => setInput("zTarget", e.target.value)}
                         className="w-24"
                       />
                     </div>
@@ -1116,8 +1143,8 @@ export default function App() {
                       </Label>
                       <Input
                         id="lspd"
-                        value={speedPct}
-                        onChange={(e) => setSpeedPct(e.target.value)}
+                        value={inp.speedPct}
+                        onChange={(e) => setInput("speedPct", e.target.value)}
                         className="w-24"
                       />
                     </div>
@@ -1127,8 +1154,8 @@ export default function App() {
                       </Label>
                       <Input
                         id="lacc"
-                        value={accelPct}
-                        onChange={(e) => setAccelPct(e.target.value)}
+                        value={inp.accelPct}
+                        onChange={(e) => setInput("accelPct", e.target.value)}
                         className="w-24"
                       />
                     </div>
@@ -1140,8 +1167,8 @@ export default function App() {
                       </Label>
                       <Input
                         id="y"
-                        value={yTarget}
-                        onChange={(e) => setYTarget(e.target.value)}
+                        value={inp.yTarget}
+                        onChange={(e) => setInput("yTarget", e.target.value)}
                         className="w-24"
                       />
                     </div>
