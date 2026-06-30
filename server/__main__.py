@@ -16,9 +16,9 @@ from pathlib import Path
 
 import uvicorn
 
-from dispense_cell import Config, DispenseCell
+from cell.balance_linear_cell import BalanceLinearCell, BalanceLinearConfig
+from cell.pump_gantry_cell import Config, PumpGantryCell
 from server.app import create_app
-from weigh_cell import WeighCell, WeighConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +41,7 @@ def _load(path: Path) -> tuple[Config, ServerConfig]:
         pump_init_force=int(pump.get("init_force", 2)),
         motor_serial_x=stage.get("serial_x", "NTAM63XD"),
         z_coord_invert=bool(stage.get("z_coord_invert", True)),
+        x_coord_invert=bool(stage.get("x_coord_invert", True)),
         home_dir_z=int(stage.get("home_dir_z", 0)),
         home_dir_x=int(stage.get("home_dir_x", 0)),
     )
@@ -52,13 +53,13 @@ def _load(path: Path) -> tuple[Config, ServerConfig]:
     return cell_cfg, server_cfg
 
 
-def _load_weigh(path: Path) -> tuple[WeighConfig, ServerConfig]:
+def _load_balance_linear(path: Path) -> tuple[BalanceLinearConfig, ServerConfig]:
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     linear = raw.get("linear", {})
     balance = raw.get("balance", {})
     server = raw.get("server", {})
-    weigh_cfg = WeighConfig(
-        linear_port=linear.get("port", "/dev/ttyUSB0"),
+    bl_cfg = BalanceLinearConfig(
+        linear_port=linear.get("port", "110A:1150"),
         scale_port=balance.get("port"),
         ambient=balance.get("ambient"),
     )
@@ -67,7 +68,7 @@ def _load_weigh(path: Path) -> tuple[WeighConfig, ServerConfig]:
         port=int(server.get("port", 17060)),  # cell4 default
         log_level=server.get("log_level", "info"),
     )
-    return weigh_cfg, server_cfg
+    return bl_cfg, server_cfg
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -83,12 +84,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--cell",
-        choices=("dispense", "weigh"),
-        default="dispense",
+        choices=("pump_gantry", "balance_linear"),
+        default="pump_gantry",
         help=(
-            "Which cell shape this server serves: 'dispense' (cell1–3: pump + "
-            "XZ gantry, default) or 'weigh' (cell4: MINAS A6 linear rail + "
-            "balance)."
+            "Which cell shape this server serves: 'pump_gantry' (cell1–3: pump "
+            "+ XZ gantry, default) or 'balance_linear' (cell4: MINAS A6 linear "
+            "rail + balance)."
         ),
     )
     parser.add_argument(
@@ -104,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.fake:
-        from fake_cell import FakeCell
+        from cell.fake_cell import FakeCell
 
         server_cfg = ServerConfig()
         if args.config is not None and args.config.exists():
@@ -137,12 +138,12 @@ def main(argv: list[str] | None = None) -> int:
     if not cfg_path.exists():
         parser.error(f"config file not found: {cfg_path}")
 
-    if args.cell == "weigh":
-        weigh_cfg, server_cfg = _load_weigh(cfg_path)
-        factory = lambda: WeighCell.open(weigh_cfg)  # noqa: E731
+    if args.cell == "balance_linear":
+        bl_cfg, server_cfg = _load_balance_linear(cfg_path)
+        factory = lambda: BalanceLinearCell.open(bl_cfg)  # noqa: E731
     else:
         cell_cfg, server_cfg = _load(cfg_path)
-        factory = lambda: DispenseCell.open(cell_cfg)  # noqa: E731
+        factory = lambda: PumpGantryCell.open(cell_cfg)  # noqa: E731
 
     app = create_app(cell_factory=factory)
     uvicorn.run(

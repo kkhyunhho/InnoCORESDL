@@ -1,16 +1,15 @@
-"""Real dispense cell (cell1): pump (``sy01b``) + XZ gantry (ESP32 ``mks_motor``).
+"""Real pump+gantry cell (cell1): pump (``sy01b``) + XZ gantry (ESP32 ``mks_motor``).
 
 A dispensing cell has **no balance** — the Phase's single balance lives on
-cell4 (see ``weigh_cell.py``), so the balance methods of the :class:`cell_protocol.Cell`
+cell4 (see ``balance_linear_cell.py``), so the balance methods of the :class:`cell_protocol.Cell`
 protocol raise here. The XZ gantry is the three MKS SERVO57D motors driven by
-the **full ESP32 ``mks_motor``** driver (paired-Z safety interlock, pyftdi),
-addressed by FTDI serial — not the standalone used by the legacy
-``xz_stage.py``.
+the ESP32 ``mks_motor`` driver (paired-Z safety interlock, pyftdi), addressed
+by FTDI serial — vendored from **ESP32S3BOX3MotorController** (the sole XZ
+gantry reference; see ``vendor/VENDORED.md``).
 
-Pump calls mirror the proven sequence in ``cv_mass_measurement.py``; gantry
-calls mirror ``ESP32S3BOX3MotorController/bridge.py`` (``open_xz`` +
-``move_sync`` + ``home_xz``). Motion order is up → X → down (never diagonal).
-Hardware-verified at the bench, not in CI.
+Gantry calls mirror that repo's ``bridge.py`` (``open_xz`` + ``move_sync`` +
+``home_xz``). Motion order is up → X → down (never diagonal). Hardware-verified
+at the bench, not in CI.
 """
 
 from __future__ import annotations
@@ -18,10 +17,10 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
-from mks_motor import MKSMotor
-from sy01b import SyringePumpController
+from vendor.mks_motor import MKSMotor
+from vendor.sy01b import SyringePumpController
 
-from cell_protocol import Cell, DeviceFaultError, WrongStateError
+from .cell_protocol import Cell, DeviceFaultError, WrongStateError
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +35,12 @@ class Config:
     # XZ gantry: FTDI serial of the X adapter; the other two adapters are the
     # paired Z (order doesn't matter — they always move together).
     motor_serial_x: str = "NTAM63XD"
+    # Both axes home at the 0x00 end and move +mm into the working travel via
+    # coord_invert (their encoder-positive points into the home limit). This
+    # is the uniform convention; the legacy CVMeasure.py instead homed X the
+    # opposite way (home_dir_x=0x01, no invert) — equivalent, but asymmetric.
     z_coord_invert: bool = True
+    x_coord_invert: bool = True
     home_dir_z: int = 0x00
     home_dir_x: int = 0x00
 
@@ -45,7 +49,7 @@ def _no_balance() -> WrongStateError:
     return WrongStateError("dispense cell has no balance", command="balance")
 
 
-class DispenseCell(Cell):
+class PumpGantryCell(Cell):
     """cell1 = syringe pump + XZ gantry, behind :class:`cell_protocol.Cell`."""
 
     def __init__(
@@ -66,7 +70,7 @@ class DispenseCell(Cell):
         self._initialized = False
 
     @classmethod
-    def open(cls, config: Config) -> DispenseCell:
+    def open(cls, config: Config) -> PumpGantryCell:
         pump_cfg = SyringePumpController.Config(
             port=config.pump_port,
             address=config.pump_address,
@@ -80,6 +84,14 @@ class DispenseCell(Cell):
         za, zb, x = MKSMotor.open_xz(
             config.motor_serial_x, z_coord_invert=config.z_coord_invert
         )
+        # open_xz inverts only the Z pair; X uses the same convention as Z
+        # (+mm away from the 0x00-home end), so set its invert here too.
+        x.coord_invert = config.x_coord_invert
+        # Put every motor into SR_vFOC + active-response before any motion
+        # (mirrors bridge.py). open_xz only opens the adapters; without this
+        # the firmware ignores subsequent home/move commands or never replies.
+        for motor in (za, zb, x):
+            motor.setup()
         return cls(pump, za, zb, x, config)
 
     # ── Discovery ───────────────────────────────────────────────────────

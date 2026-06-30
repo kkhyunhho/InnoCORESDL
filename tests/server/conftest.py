@@ -11,7 +11,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from fake_cell import FakeCell
+from cell.fake_cell import FakeCell
 from server.app import create_app
 
 

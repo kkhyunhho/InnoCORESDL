@@ -12,7 +12,7 @@ Used two ways:
 
 from __future__ import annotations
 
-from cell_protocol import AMBIENT_LEVELS, InvalidArgError, WrongStateError
+from .cell_protocol import AMBIENT_LEVELS, InvalidArgError, WrongStateError
 
 SYRINGE_UL = 125.0
 

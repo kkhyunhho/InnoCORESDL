@@ -1,7 +1,7 @@
 """FastAPI application factory for the SyringeLiquidHandler cell.
 
 ``create_app(cell_factory=None)`` mirrors the sy01b-server pattern: inject a
-real :class:`DispenseCell` in production and a ``FakeCell`` in tests/dev. The
+real :class:`PumpGantryCell` in production and a ``FakeCell`` in tests/dev. The
 factory owns the lifespan — it builds the cell once on startup and closes it
 on shutdown.
 

@@ -1,4 +1,4 @@
-"""Real cell4 (weigh cell): MINAS A6 linear rail (``lmc``) + Entris-II balance.
+"""Real cell4 (balance + linear rail): MINAS A6 linear rail (``lmc``) + Entris-II balance.
 
 cell4 carries the Phase's single balance on a linear rail and shuttles it
 under cell1–3 to weigh each dispense. It has **no pump**, so the pump methods
@@ -11,22 +11,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from entris_ii import PrecisionScaleController
+from vendor.entris_ii import PrecisionScaleController
 
-from cell_protocol import (
+from .cell_protocol import (
     AMBIENT_LEVELS,
     Cell,
     InvalidArgError,
     WrongStateError,
 )
-from lmc import LinearMotorController
+from vendor.lmc import LinearMotorController
 
 
 @dataclass(frozen=True, slots=True)
-class WeighConfig:
+class BalanceLinearConfig:
     """Bench wiring for the weigh cell (loaded from slh.toml)."""
 
-    linear_port: str = "/dev/ttyUSB0"  # MINAS A6 over RS485 (TI USB3410)
+    linear_port: str = "110A:1150"  # MINAS A6 over RS485 via Moxa UPort 1150
     scale_port: str | None = None  # None → auto-detect by Sartorius VID
     ambient: str | None = None
 
@@ -35,21 +35,21 @@ def _no_pump() -> WrongStateError:
     return WrongStateError("weigh cell has no pump", command="pump")
 
 
-class WeighCell(Cell):
+class BalanceLinearCell(Cell):
     """cell4 = MINAS A6 linear rail + Entris-II balance, behind ``Cell``."""
 
     def __init__(
         self,
         lin: LinearMotorController,
         scale: PrecisionScaleController,
-        config: WeighConfig,
+        config: BalanceLinearConfig,
     ) -> None:
         self._lin = lin
         self._scale = scale
         self._cfg = config
 
     @classmethod
-    def open(cls, config: WeighConfig) -> WeighCell:
+    def open(cls, config: BalanceLinearConfig) -> BalanceLinearCell:
         scale_port = config.scale_port or PrecisionScaleController.find_port()
         lin = LinearMotorController(config.linear_port)  # opens RS485 at init
         scale = PrecisionScaleController(port=scale_port)

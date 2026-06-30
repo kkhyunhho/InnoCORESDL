@@ -1,2 +1,3 @@
-# Root conftest: presence makes pytest put the SyringeLiquidHandler root on
-# sys.path so `cell`, `server`, and `report` import in tests without packaging.
+# Root conftest: its presence puts the SyringeLiquidHandler root dir on
+# sys.path, so the top-level packages import in tests without packaging —
+# the tests use `cell.fake_cell` and `server` (which pull in `vendor`, …).

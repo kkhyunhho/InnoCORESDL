@@ -4,8 +4,8 @@ The L1 server is a thin HTTP bridge over a **Cell** — the composition of the
 pump (``sy01b``), the balance (``entris_ii``), and the XZ stage. Two
 implementations satisfy the :class:`Cell` protocol:
 
-* :class:`DispenseCell` — real drivers, opened at the bench. Pump/balance
-  calls mirror the proven sequence in ``cv_mass_measurement.py``.
+* :class:`PumpGantryCell` / :class:`BalanceLinearCell` — real drivers
+  (vendored), opened at the bench.
 * ``FakeCell`` (tests/server/conftest.py) — in-memory, for tests and for
   serving the web UI without hardware.
 
@@ -64,7 +64,7 @@ AMBIENT_LEVELS = ("very_stable", "stable", "unstable", "very_unstable")
 
 @runtime_checkable
 class Cell(Protocol):
-    """Interface the /v1 routes call. Implemented by DispenseCell + FakeCell.
+    """Interface the /v1 routes call. Implemented by PumpGantryCell + FakeCell.
 
     All methods are synchronous and blocking; the server runs them in a
     worker thread under a single ``asyncio.Lock`` (one command in flight).
