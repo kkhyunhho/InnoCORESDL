@@ -672,7 +672,7 @@ export default function App() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-2">
               {DISPENSE_CELLS.map((c, i) => {
                 const st = cells[c.id]
                 const sw = cellStateWord(st)
@@ -735,8 +735,10 @@ export default function App() {
             </CardHeader>
             <CardContent className="flex flex-col gap-1">
               {/* exact-thirds grid (gap-0) so each cell centre = (i+0.5)/3 of
-                  the width — the linear-track stops below line up under them */}
-              <div className="grid grid-cols-3">
+                  the width — the linear-track stops below line up under them.
+                  The shared 85% centred width pulls the cells closer together
+                  while keeping the track aligned under each gantry. */}
+              <div className="mx-auto grid w-[85%] grid-cols-3">
                 {DISPENSE_CELLS.map((c) => {
                   const lv = cells[c.id].live
                   return (
@@ -766,14 +768,16 @@ export default function App() {
                 })}
               </div>
               {WEIGH_CELL && (
-                <LinearTrack
-                  mm={cells[WEIGH_CELL.id].live.stageXmm}
-                  maxMm={X_MAX_MM}
-                  weightG={cells[WEIGH_CELL.id].live.weightG}
-                  cells={DISPENSE_CELLS.map((c) => c.name)}
-                  durMs={stageDurMs}
-                  ease={stageEase}
-                />
+                <div className="mx-auto w-[85%]">
+                  <LinearTrack
+                    mm={cells[WEIGH_CELL.id].live.stageXmm}
+                    maxMm={X_MAX_MM}
+                    weightG={cells[WEIGH_CELL.id].live.weightG}
+                    cells={DISPENSE_CELLS.map((c) => c.name)}
+                    durMs={stageDurMs}
+                    ease={stageEase}
+                  />
+                </div>
               )}
             </CardContent>
           </Card>
