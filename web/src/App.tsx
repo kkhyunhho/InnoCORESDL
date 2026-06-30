@@ -86,6 +86,7 @@ interface CellState {
   busy: Record<Dev, boolean>
   diagnosed: boolean
   initialized: boolean
+  reachable: boolean // last status poll reached the backend
 }
 
 const newCellState = (): CellState => ({
@@ -104,6 +105,7 @@ const newCellState = (): CellState => ({
   busy: { pump: false, balance: false, stage: false },
   diagnosed: false,
   initialized: false,
+  reachable: false,
 })
 
 // Control-panel inputs, remembered per cell.
@@ -240,17 +242,22 @@ export default function App() {
         if (st.busy.pump || st.busy.balance || st.busy.stage) continue
         try {
           const s = await clientFor(c.id).status()
-          patchLive(c.id, (l) => ({
-            ...l,
-            weightG: s.weight_g,
-            plungerUL: s.plunger_uL,
-            stageXmm: s.stage_x_mm,
-            stageZmm: s.stage_z_mm,
-            valveConnect: asPort(s.valve),
-            error: s.error,
+          patchCell(c.id, (st2) => ({
+            ...st2,
+            reachable: true,
+            live: {
+              ...st2.live,
+              weightG: s.weight_g,
+              plungerUL: s.plunger_uL,
+              stageXmm: s.stage_x_mm,
+              stageZmm: s.stage_z_mm,
+              valveConnect: asPort(s.valve),
+              error: s.error,
+            },
           }))
         } catch {
-          /* unreachable backend — keep last-known */
+          // unreachable backend — keep last-known readouts, mark offline
+          patchCell(c.id, (st2) => ({ ...st2, reachable: false }))
         }
       }
     }, 2000)
@@ -907,6 +914,13 @@ export default function App() {
             <div className="mb-3 flex flex-wrap gap-1">
               {CELLS.map((c) => {
                 const sw = cellStateWord(cells[c.id])
+                // connectivity: mock cells are always "mock"; real cells show
+                // live/offline from the status poll (no Setup needed).
+                const conn = c.mock
+                  ? { word: "mock", cls: "text-status-warn" }
+                  : cells[c.id].reachable
+                    ? { word: "live", cls: "text-status-ok" }
+                    : { word: "offline", cls: "text-status-fault" }
                 return (
                   <button
                     key={c.id}
@@ -917,7 +931,12 @@ export default function App() {
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    <span className="font-medium">{c.name}</span>
+                    <span className="font-medium">
+                      {c.name}
+                      <span className={`ml-1 text-[10px] ${conn.cls}`}>
+                        ●{conn.word}
+                      </span>
+                    </span>
                     <span className={`text-[10px] ${sw.cls}`}>{sw.word}</span>
                   </button>
                 )
