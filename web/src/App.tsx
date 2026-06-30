@@ -734,15 +734,13 @@ export default function App() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-1">
-              {/* exact-thirds grid (gap-0) so each cell centre = (i+0.5)/3 of
-                  the width — the linear-track stops below line up under them.
-                  The shared 85% centred width pulls the cells closer together
-                  while keeping the track aligned under each gantry. */}
-              <div className="mx-auto grid w-[85%] grid-cols-3">
+              {/* left-aligned; cells share an 85% width grid (gap-0) with the
+                  track below so the stops still sit under each gantry. */}
+              <div className="grid w-[85%] grid-cols-3">
                 {DISPENSE_CELLS.map((c) => {
                   const lv = cells[c.id].live
                   return (
-                    <div key={c.id} className="flex flex-col items-center gap-1 px-1">
+                    <div key={c.id} className="flex flex-col items-start gap-1 pr-2">
                       <span className="text-xs font-medium text-muted-foreground">
                         {c.name}
                       </span>
@@ -768,7 +766,7 @@ export default function App() {
                 })}
               </div>
               {WEIGH_CELL && (
-                <div className="mx-auto w-[85%]">
+                <div className="w-[85%]">
                   <LinearTrack
                     mm={cells[WEIGH_CELL.id].live.stageXmm}
                     maxMm={X_MAX_MM}
