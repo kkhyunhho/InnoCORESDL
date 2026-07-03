@@ -27,11 +27,34 @@ installs, but the cell imports the vendored copies.)
 
 ## Conventions
 
-For shared conventions — code style, the `sdl` env, testing, terminology
-(**Level** = control-code depth; **Phase** = SDL hardware stage;
-composition = device → **cell** → Phase-system), and task/commit rules —
-see **SDLClaude** (`kkhyunhho/SDLClaude`), the single source of truth.
-Where this file is silent, SDLClaude governs.
+Shared conventions come from **CommonClaude**, vendored as a submodule at
+`vendor/CommonClaude/` — read its `CLAUDE.md` for the full ruleset: MIT
+code style (80-col, 4-space, `snake_case`, Google-style docstrings, no
+magic numbers), debug files in `claude_test/` (never `tests/`),
+ToDo.md + `gh` issue/branch/PR task workflow, Conventional Commits,
+GitHub Flow, and SemVer. Per its §1 Rule Priority, this project-level
+file wins on conflict.
+
+Those conventions are enforced by hooks in `.claude/settings.json` (copied
+from CommonClaude; see "Hooks" below).
+
+SDL-specific terminology still follows **SDLClaude**
+(`kkhyunhho/SDLClaude`): **Level** = control-code depth; **Phase** = SDL
+hardware stage; composition = device → **cell** → Phase-system.
+
+## Hooks
+
+`.claude/settings.json` wires CommonClaude's enforcement hooks
+(scripts in `.claude/hooks/`):
+
+| Hook | Event | Enforces |
+|---|---|---|
+| `pre-write-guard.sh` | PreToolUse (Write/Edit) | blocks `debug_*`/`scratch_*`/`tmp_*`/`experiment_*` files in `tests/` — they belong in `claude_test/`. |
+| `pre-bash-secret-scan.sh` | PreToolUse (Bash) | blocks commands containing likely secret literals (API keys, `password=` …). |
+| `pre-read-env-guard.sh` | PreToolUse (Read) | blocks reads of `.env` / `*.key` / `*.pem` credential files. |
+| `post-write-lint.sh` | PostToolUse (Write/Edit) | `ruff check` + `ruff format --check` on every written `.py`; **skips `vendor/`** (vendored drivers keep upstream style). |
+| `post-write-debug-remind.sh` | PostToolUse (Write/Edit) | reminds to index new `claude_test/` files in `claude_test/README.md`. |
+| Stop prompt hook | Stop | verifies ToDo.md entry, `gh` issue, and ruff pass before finishing. |
 
 ## Files
 
@@ -43,7 +66,9 @@ Where this file is silent, SDLClaude governs.
 | `cell/balance_linear_cell.py` | `BalanceLinearCell` — real cell4: MINAS A6 linear rail (`lmc`) + Entris-II balance, no pump. Run with `python -m server --config server/cell4.toml` (shape auto-detected from the `[linear]` table). |
 | `vendor/lmc/` | Codename `lmc` package — VID:PID-resolving shim (`__init__.py`) over the vendored MINAS A6 raw driver (`linear_motor_controller.py`, RS485 standard protocol with a PID closed loop); imported as `vendor.lmc`. |
 | `server/` | FastAPI **L1 `/v1` server** — thin HTTP bridge over the cell (mirrors `sy01b-server`). |
-| `vendor/` | All hardware drivers vendored in-repo (`sy01b`, `entris_ii`, `mks_motor`, `linear_motor_controller`); see `vendor/VENDORED.md` for sources/commits. |
+| `vendor/` | All hardware drivers vendored in-repo (`sy01b`, `entris_ii`, `mks_motor`, `linear_motor_controller`); see `vendor/VENDORED.md` for sources/commits. Also holds git **submodules**: `CommonClaude` (conventions), `HotplateController`, `SmartPlugController`. |
+| `.claude/` | Hook scripts + `settings.json` copied from `vendor/CommonClaude` (see "Hooks"). |
+| `.mcp.json` | Project-scope MCP servers required by CommonClaude §7: **serena** (semantic code nav), **context7** (library docs), **fetch** (web pages as Markdown). Needs `uvx` + `npx` on PATH. |
 | `README.md` | User-facing usage + bench notes. |
 | `ADDING_A_CELL.md` | Step-by-step guide to add a new hardware cell (the *how*; SDLClaude has the *why*). |
 | `requirements.txt` | Runtime deps only (`pyserial`, `pyftdi`, `fastapi`, …); the drivers themselves are vendored. |
