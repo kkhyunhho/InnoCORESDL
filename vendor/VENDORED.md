@@ -1,6 +1,6 @@
 # Vendored drivers
 
-All hardware drivers are copied in-repo so SyringeLiquidHandler runs
+All hardware drivers are copied in-repo so InnoCORESDL runs
 standalone (no pip-git, no sibling clones). Imported as `vendor.<name>`
 (e.g. `from vendor.sy01b import SyringePumpController`). Their runtime deps
 (`pyserial`, `pyftdi`) are in `requirements.txt`.

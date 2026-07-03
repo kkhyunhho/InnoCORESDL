@@ -1,4 +1,4 @@
-"""Pydantic request/response models for the SyringeLiquidHandler /v1 API.
+"""Pydantic request/response models for the InnoCORESDL /v1 API.
 
 Units are in field names (``_g`` grams, ``_uL`` microliters, ``_mm``
 millimeters, ``_pct`` percent) to match the SDLClaude UI unit standard.

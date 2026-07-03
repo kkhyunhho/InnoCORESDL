@@ -1,4 +1,4 @@
-# SyringeLiquidHandler /v1 server config. Copy to slh.toml (gitignored) and
+# InnoCORESDL /v1 server config. Copy to ics.toml (gitignored) and
 # edit for the bench. Ports accept a device path or a "VID:PID" hex string.
 #
 # This file lists EVERY section for reference. A real cell config keeps only

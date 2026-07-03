@@ -25,7 +25,7 @@ from .cell_protocol import Cell, DeviceFaultError, WrongStateError
 
 @dataclass(frozen=True, slots=True)
 class Config:
-    """Bench wiring for a dispense cell (loaded from slh.toml)."""
+    """Bench wiring for a dispense cell (loaded from ics.toml)."""
 
     pump_port: str = "1A86:7523"
     pump_address: int = 1

@@ -1,4 +1,4 @@
-"""``python -m server`` entry point for the SyringeLiquidHandler cell.
+"""``python -m server`` entry point for the InnoCORESDL cell.
 
 Reads a TOML config (``[pump]`` / ``[balance]`` / ``[stage]`` for the cell,
 ``[server]`` for host/port/log level), opens the cell once, and hands the
@@ -81,14 +81,14 @@ def _infer_cell(path: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="slh-server")
+    parser = argparse.ArgumentParser(prog="ics-server")
     parser.add_argument(
         "--config",
         type=Path,
         default=None,
         help=(
-            "TOML config path. Default: $SLH_SERVER_CONFIG env var, "
-            "otherwise ./server/slh.toml."
+            "TOML config path. Default: $ICS_SERVER_CONFIG env var, "
+            "otherwise ./server/ics.toml."
         ),
     )
     parser.add_argument(
@@ -105,10 +105,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.config is not None:
         cfg_path = args.config
-    elif env := os.environ.get("SLH_SERVER_CONFIG"):
+    elif env := os.environ.get("ICS_SERVER_CONFIG"):
         cfg_path = Path(env)
     else:
-        cfg_path = Path("server/slh.toml")
+        cfg_path = Path("server/ics.toml")
 
     if not cfg_path.exists():
         parser.error(f"config file not found: {cfg_path}")

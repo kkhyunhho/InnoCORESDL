@@ -1,4 +1,4 @@
-# SyringeLiquidHandler
+# InnoCORESDL
 
 The Phase-1 **cell** project: hardware drivers composed behind a `Cell`
 interface, served over an L1 FastAPI `/v1` API, with a React web UI. It is

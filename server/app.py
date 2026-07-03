@@ -1,4 +1,4 @@
-"""FastAPI application factory for the SyringeLiquidHandler cell.
+"""FastAPI application factory for the InnoCORESDL cell.
 
 ``create_app(cell_factory=None)`` mirrors the sy01b-server pattern: the
 injected ``cell_factory`` builds the cell (a :class:`PumpGantryCell` or
@@ -42,10 +42,10 @@ def create_app(cell_factory: CellFactory | None = None) -> FastAPI:
                 close()
 
     app = FastAPI(
-        title="slh-server",
+        title="ics-server",
         version="0.1.0",
         description=(
-            "HTTP /v1 bridge over the SyringeLiquidHandler cell — pump "
+            "HTTP /v1 bridge over the InnoCORESDL cell — pump "
             "(sy01b) + balance (entris_ii) + XZ stage — composed behind one "
             "Cell facade. Endpoints mirror the web UI's device tabs."
         ),

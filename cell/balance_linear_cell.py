@@ -29,7 +29,7 @@ from vendor.lmc import LinearMotorController
 
 @dataclass(frozen=True, slots=True)
 class BalanceLinearConfig:
-    """Bench wiring for the weigh cell (loaded from slh.toml)."""
+    """Bench wiring for the weigh cell (loaded from ics.toml)."""
 
     linear_port: str = "110A:1150"  # MINAS A6 over RS485 via Moxa UPort 1150
     scale_port: str | None = None  # None → auto-detect by Sartorius VID

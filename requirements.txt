@@ -1,4 +1,4 @@
-# Python dependencies for SyringeLiquidHandler. Requires Python >= 3.12.
+# Python dependencies for InnoCORESDL. Requires Python >= 3.12.
 #   conda activate sdl && pip install -r requirements.txt
 #
 # Fully self-contained: ALL hardware drivers are vendored in-repo under

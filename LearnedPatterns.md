@@ -1,4 +1,4 @@
-# LearnedPatterns — SyringeLiquidHandler
+# LearnedPatterns — InnoCORESDL
 
 Running log of gotchas hit while building the combined SY-01B pump +
 Entris-II balance scripts in this folder. Append a new entry whenever a

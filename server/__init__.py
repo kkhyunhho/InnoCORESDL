@@ -1,4 +1,4 @@
-"""FastAPI HTTP /v1 bridge over the SyringeLiquidHandler cell.
+"""FastAPI HTTP /v1 bridge over the InnoCORESDL cell.
 
 A thin adapter: every endpoint delegates to one method on a single
 :class:`cell.Cell` held in ``app.state.cell`` (pump + balance + stage,

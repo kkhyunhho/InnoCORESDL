@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This file guides Claude Code (claude.ai/code) when working in the
-**SyringeLiquidHandler** folder.
+**InnoCORESDL** folder.
 
 ## Overview
 

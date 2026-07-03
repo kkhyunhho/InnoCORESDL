@@ -1,4 +1,4 @@
-"""Cell facade + error hierarchy for the SyringeLiquidHandler /v1 server.
+"""Cell facade + error hierarchy for the InnoCORESDL /v1 server.
 
 The L1 server is a thin HTTP bridge over a **Cell** — the composition of the
 pump (``sy01b``), the balance (``entris_ii``), and the XZ stage. Two

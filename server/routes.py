@@ -1,4 +1,4 @@
-"""HTTP routes for the SyringeLiquidHandler /v1 API.
+"""HTTP routes for the InnoCORESDL /v1 API.
 
 Every state-changing handler acquires ``app.state.lock`` for the whole
 device interaction (single in-flight, matching the drivers' one-command-at-
