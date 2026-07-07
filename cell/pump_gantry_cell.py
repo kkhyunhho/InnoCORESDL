@@ -34,7 +34,7 @@ class Config:
     pump_init_force: int = 2
     # XZ gantry: FTDI serial of the X adapter; the other two adapters are the
     # paired Z (order doesn't matter — they always move together).
-    motor_serial_x: str = "NTAM63XD"
+    motor_serial_x: str = "NTAMU6TO"
     # Both axes home at the 0x00 end and move +mm into the working travel via
     # coord_invert (their encoder-positive points into the home limit). This
     # is the uniform convention; the legacy CVMeasure.py instead homed X the

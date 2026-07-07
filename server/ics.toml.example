@@ -18,7 +18,7 @@ init_force = 2        # 0/1/2 or 10..40 Z-init force code
 # Dispense cell (cell1–3) XZ gantry: 3 MKS SERVO57D via the ESP32 mks_motor
 # driver. serial_x = FTDI serial of the X adapter; the other two adapters are
 # the paired Z (auto-assigned, order-independent).
-serial_x = "NTAM63XD"
+serial_x = "NTAMU6TO"
 z_coord_invert = true
 # home_dir_z = 0       # flip 0<->1 to home off the opposite end
 # home_dir_x = 0

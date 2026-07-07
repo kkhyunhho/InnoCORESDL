@@ -39,7 +39,7 @@ def _load(path: Path) -> tuple[Config, ServerConfig]:
         pump_baud=int(pump.get("baud", 9600)),
         syringe_uL=int(pump.get("syringe_uL", 125)),
         pump_init_force=int(pump.get("init_force", 2)),
-        motor_serial_x=stage.get("serial_x", "NTAM63XD"),
+        motor_serial_x=stage.get("serial_x", "NTAMU6TO"),
         z_coord_invert=bool(stage.get("z_coord_invert", True)),
         x_coord_invert=bool(stage.get("x_coord_invert", True)),
         home_dir_z=int(stage.get("home_dir_z", 0)),

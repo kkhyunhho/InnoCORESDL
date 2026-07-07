@@ -7,7 +7,7 @@ syringe_uL = 125
 init_force = 2
 
 [stage]
-serial_x = "NTAM63XD" # FTDI serial of the X adapter; two Z auto-assigned
+serial_x = "NTAMU6TO" # FTDI serial of the X adapter; two Z auto-assigned
 z_coord_invert = true  # +mm moves Z away from its 0x00 home limit
 x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4)
 

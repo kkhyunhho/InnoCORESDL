@@ -221,7 +221,7 @@ class MKSMotor:
             port: FTDI device enumeration index. Ignored when
                 serial is provided. Defaults to 0.
             can_id: CAN bus ID for this motor.
-            serial: FTDI chip serial number (e.g. "NTAM63XD").
+            serial: FTDI chip serial number (e.g. "NTAMU6TO").
                 When set, the adapter is picked by serial rather
                 than enumeration index — robust against USB
                 re-enumeration order changes.
@@ -256,7 +256,7 @@ class MKSMotor:
 
         Args:
             serial_x: FTDI chip serial of the X-axis adapter
-                (e.g. "NTAM63XD").
+                (e.g. "NTAMU6TO").
             z_coord_invert: Apply coord_invert to the Z motors only.
                 Default True for this project because the Z limit
                 wires were physically swapped, which flips the
