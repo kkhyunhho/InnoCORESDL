@@ -8,7 +8,7 @@ standalone (no pip-git, no sibling clones). Imported as `vendor.<name>`
 | Vendored path | Upstream | Commit | Local changes |
 |---|---|---|---|
 | `sy01b/` | kkhyunhho/SyringePumpController (`src/sy01b`) | `5ae0d56` | `__init__.py`: absolute self-import → relative (`from .syringe_pump_controller`). `cli/` left verbatim (not on the cell's import path). |
-| `entris_ii/` | kkhyunhho/PrecisionScaleController (`src/entris_ii`) | `ad85d6c` | `__init__.py`: absolute self-import → relative (`from .precision_scale_controller`). `cli/` left verbatim. |
+| `entris_ii/` | kkhyunhho/PrecisionScaleController (`src/entris_ii`) | `ad85d6c` | `__init__.py`: absolute self-import → relative (`from .precision_scale_controller`). `cli/` left verbatim. **`precision_scale_controller.py`: `calibrate_internal_very_unstable` sends `Esc s3_` (CANCEL) on failure/timeout so an aborted internal cal doesn't leave the balance beeping until a power cycle (re-apply on re-vendor; upstream to PrecisionScaleController).** |
 | `mks_motor/` | kkhyunhho/ESP32S3BOX3MotorController (`src/mks_motor`) | `c156a37` | none — already uses relative imports. |
 | `lmc/linear_motor_controller.py` | coport-uni/LinearMotorController (`LinearMotorController.py`) | `98d5ccc` | `# ruff: noqa` header. Raw MINAS standard-protocol RS485 driver (Pr5.37=0); verbatim. Includes the `PIDController` speed-control loop (`move_to_mm`). **cell4 uses this.** |
 | `lmc/__init__.py` | (ours, not vendored) | — | Thin codename shim over `linear_motor_controller.py` adding VID:PID port resolution (the one driver whose upstream lacks it). Imported as `vendor.lmc`. |

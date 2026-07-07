@@ -21,6 +21,7 @@ from vendor.entris_ii import PrecisionScaleController
 from .cell_protocol import (
     AMBIENT_LEVELS,
     Cell,
+    DeviceFaultError,
     InvalidArgError,
     WrongStateError,
 )
@@ -126,13 +127,22 @@ class BalanceLinearCell(Cell):
 
     def calibrate(self) -> float:
         # Internal (isoCAL) calibration: the balance's built-in weight adjusts
-        # span + zero. The pan MUST be empty. This is the commissioning path
-        # ("Setup all"), not routine zeroing — routine zeroing uses tare().
-        # The driver forces ambient to "very_unstable" during the cycle, so
-        # restore the configured ambient afterward.
-        reading = self._scale.calibrate_internal_very_unstable()
-        if self._cfg.ambient is not None:
-            self._scale.set_ambient(self._cfg.ambient)
+        # span + zero. The pan MUST be empty. Commissioning path ("Setup all"),
+        # not routine zeroing (that uses tare()). The driver forces ambient to
+        # "very_unstable" for the cycle and CANCELs the balance on failure so it
+        # is not left mid-cal beeping; restore the configured ambient here
+        # whether the cal succeeded or not.
+        try:
+            reading = self._scale.calibrate_internal_very_unstable()
+        except Exception as exc:  # timeout / balance error during calibration
+            raise DeviceFaultError(
+                f"balance calibration failed ({exc}); "
+                "check the pan is empty and undisturbed",
+                command="balance/calibrate",
+            ) from exc
+        finally:
+            if self._cfg.ambient is not None:
+                self._scale.set_ambient(self._cfg.ambient)
         self._last_weight_g = float(reading.value)
         return self._last_weight_g
 

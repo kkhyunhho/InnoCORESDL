@@ -573,6 +573,7 @@ class PrecisionScaleController:
 
         start = time.monotonic()
         deadline = start + timeout
+        success = False
         try:
             while time.monotonic() < deadline:
                 time.sleep(poll_interval)
@@ -591,6 +592,7 @@ class PrecisionScaleController:
                 # Pin the bar to 100% before the trailing newline so
                 # the final on-screen state matches the success.
                 self._render_cal_progress(timeout, timeout)
+                success = True
                 return reading
         finally:
             # Always close the carriage-return line so subsequent
@@ -598,6 +600,15 @@ class PrecisionScaleController:
             # timeout, and any unexpected raise from inside the loop.
             sys.stderr.write("\n")
             sys.stderr.flush()
+            # LOCAL CHANGE (vendored, see VENDORED.md): if we leave
+            # without a completed reading (timeout / error / abort), send
+            # CANCEL (Esc s3_) so the balance is not left mid-calibration
+            # continuously beeping until a power cycle.
+            if not success:
+                try:
+                    self._send_command(self.CMD_CANCEL)
+                except Exception:
+                    pass
         raise TimeoutError(
             f"internal calibration did not complete within {timeout}s"
         )
