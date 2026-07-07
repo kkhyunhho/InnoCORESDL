@@ -1,0 +1,20 @@
+# cell2 (pump + gantry) config. Copy to cell2.toml (gitignored).
+#   python -m server --config server/cell2.toml          # real hardware
+# PARTIALLY WIRED: X adapter serial is set; fill the pump port before bringing
+# cell2 up. A blank/wrong serial_x makes open_xz fail with a clear "X adapter
+# not connected" error rather than grabbing another cell's adapter.
+
+[pump]
+port = ""            # TODO: SY-01B CH340 "VID:PID" (or /dev path) for cell2
+syringe_uL = 125
+init_force = 2
+
+[stage]
+serial_x = "NTB19XKA"  # cell2's X adapter FTDI serial; two Z auto-assigned
+z_coord_invert = true  # +mm moves Z away from its 0x00 home limit
+x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4)
+
+[server]
+host = "0.0.0.0"
+port = 17056
+log_level = "info"
