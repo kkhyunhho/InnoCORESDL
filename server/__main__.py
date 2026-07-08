@@ -44,6 +44,17 @@ def _load(path: Path) -> tuple[Config, ServerConfig]:
         x_coord_invert=bool(stage.get("x_coord_invert", True)),
         home_dir_z=int(stage.get("home_dir_z", 0)),
         home_dir_x=int(stage.get("home_dir_x", 0)),
+        # Omit/blank the TOML key → None → driver default (400 mm).
+        x_max_travel_mm=(
+            float(stage["x_max_travel_mm"])
+            if stage.get("x_max_travel_mm") is not None
+            else None
+        ),
+        z_max_travel_mm=(
+            float(stage["z_max_travel_mm"])
+            if stage.get("z_max_travel_mm") is not None
+            else None
+        ),
     )
     server_cfg = ServerConfig(
         host=server.get("host", "0.0.0.0"),

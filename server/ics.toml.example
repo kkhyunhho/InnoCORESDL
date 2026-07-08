@@ -22,6 +22,11 @@ serial_x = "NTAMU6TO"
 z_coord_invert = true
 # home_dir_z = 0       # flip 0<->1 to home off the opposite end
 # home_dir_x = 0
+# Per-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.
+# Set each to the axis' real travel (endstop position) so a move can't run
+# into the limit; X and Z endstops may differ.
+# x_max_travel_mm = 400
+# z_max_travel_mm = 400
 
 # Balance+linear cell (cell4) sections — the MINAS A6 linear rail (codename
 # `lmc`) over RS485 + the balance. Include these (and drop [pump]/[stage])

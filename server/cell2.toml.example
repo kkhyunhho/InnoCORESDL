@@ -13,6 +13,10 @@ init_force = 2
 serial_x = "NTB19XKA"  # cell2's X adapter FTDI serial; two Z auto-assigned
 z_coord_invert = true  # +mm moves Z away from its 0x00 home limit
 x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4)
+# Per-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.
+# Measure each axis' real travel (endstop position), then uncomment + set:
+# x_max_travel_mm = 400   # TODO: measure & set
+# z_max_travel_mm = 400   # TODO: measure & set
 
 [server]
 host = "0.0.0.0"

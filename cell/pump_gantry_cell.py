@@ -43,6 +43,12 @@ class Config:
     x_coord_invert: bool = True
     home_dir_z: int = 0x00
     home_dir_x: int = 0x00
+    # Per-axis soft travel limit (mm): move_gantry rejects targets outside
+    # [0, max]. None → keep the driver default (400 mm). Set each to the axis'
+    # real travel (endstop position) so a move never runs into the limit. The
+    # X and Z endstops can sit at different places, hence per-axis.
+    x_max_travel_mm: float | None = None
+    z_max_travel_mm: float | None = None
 
 
 def _no_balance() -> WrongStateError:
@@ -108,6 +114,14 @@ class PumpGantryCell(Cell):
         # open_xz inverts only the Z pair; X uses the same convention as Z
         # (+mm away from the 0x00-home end), so set its invert here too.
         x.coord_invert = config.x_coord_invert
+        # Per-axis soft travel limit. None → leave the driver default (400 mm).
+        # Set each axis to its real (endstop) travel so move_to rejects an
+        # out-of-range target instead of driving into the limit.
+        if config.x_max_travel_mm is not None:
+            x._max_travel_mm = config.x_max_travel_mm
+        if config.z_max_travel_mm is not None:
+            za._max_travel_mm = config.z_max_travel_mm
+            zb._max_travel_mm = config.z_max_travel_mm
         # Put every motor into SR_vFOC + active-response before any motion
         # (mirrors bridge.py). open_xz only opens the adapters; without this
         # the firmware ignores subsequent home/move commands or never replies.
