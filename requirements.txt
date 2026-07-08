@@ -16,3 +16,9 @@ pyftdi>=0.55     # XZ gantry (mks_motor) over FTDI USB2CAN
 # ── L1 /v1 server (server/) ────────────────────────────────────────────────
 fastapi>=0.115        # /v1 app + pydantic schemas
 uvicorn>=0.30         # ASGI server (python -m server)
+
+# ── Demo scenario (demo_scenario/) only ────────────────────────────────────
+# Runtime deps of the two demo-only vendored drivers; not needed to run the
+# cells or the /v1 server.
+ika>=2.0              # IKA RCT digital hotplate (vendor/HotplateController)
+python-kasa>=0.7      # Tapo P110M smart plug (vendor/SmartPlugController)
