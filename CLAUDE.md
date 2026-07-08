@@ -43,7 +43,7 @@ Where this file is silent, SDLClaude governs.
 | `cell/balance_linear_cell.py` | `BalanceLinearCell` — real cell4: MINAS A6 linear rail (`lmc`) + Entris-II balance, no pump. Run with `python -m server --config server/cell4.toml` (shape auto-detected from the `[linear]` table). |
 | `vendor/lmc/` | Codename `lmc` package — VID:PID-resolving shim (`__init__.py`) over the vendored MINAS A6 raw driver (`linear_motor_controller.py`, RS485 standard protocol with a PID closed loop); imported as `vendor.lmc`. |
 | `server/` | FastAPI **L1 `/v1` server** — thin HTTP bridge over the cell (mirrors `sy01b-server`). |
-| `demo_scenario/` | Stand-alone demo (`python -m demo_scenario.main`): motor down → hotplate + smart plug heat/hold → syringe dispense → motor home → heater/plug off. Uses vendored drivers directly (not the `/v1` server). |
+| `demo_scenario/` | Stand-alone demo (`python -m demo_scenario.main`): motor down → hotplate + smart plug heat/hold → syringe dispense → motor home → heater/plug off. Uses vendored drivers directly (not the `/v1` server). `phase2_device.py` is the Phase-2 device composition (hotplate + plug + motor + pump) **slated to become cell5** behind the `Cell` protocol. |
 | `vendor/` | All hardware drivers vendored in-repo — **copied, no git submodules** (`sy01b`, `entris_ii`, `mks_motor`, `linear_motor_controller`; plus demo-only `HotplateController`, `SmartPlugController`); see `vendor/VENDORED.md` for sources/commits. |
 | `README.md` | User-facing usage + bench notes. |
 | `ADDING_A_CELL.md` | Step-by-step guide to add a new hardware cell (the *how*; SDLClaude has the *why*). |

@@ -26,7 +26,7 @@ Prerequisites:
 import os
 import time
 
-from demo_scenario.devices import (
+from demo_scenario.phase2_device import (
     hotplate,
     motor,
     plug_controller,

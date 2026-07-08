@@ -1,4 +1,4 @@
-"""Device plumbing for the demo scenario.
+"""Phase-2 device plumbing (the seed for a future **cell5**).
 
 Every device used by ``main.py`` gets a context manager here that opens
 it, applies safety-relevant defaults, and guarantees cleanup (heater
@@ -8,6 +8,13 @@ only calls high-level driver methods on the yielded objects.
 
 All drivers are the vendored copies under ``vendor/`` — no new device
 code lives here.
+
+**Planned:** this Phase-2 device composition (hotplate + smart plug +
+motor + pump) is slated to become **cell5** — wrapped behind the ``Cell``
+protocol (``cell/cell_protocol.py``) and served over its own ``/v1``
+port, like the other cells. For now it runs as the stand-alone
+``demo_scenario`` only; the context managers here are the composition
+root a future ``Phase2Cell.open`` will reuse.
 """
 
 from __future__ import annotations
