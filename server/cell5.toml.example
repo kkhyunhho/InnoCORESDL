@@ -12,10 +12,9 @@
 # gantry). serial_z = FTDI serial of that adapter.
 serial_z = "NTB3EP5R"
 z_coord_invert = true
-# home_dir_z = 0         # flip 0<->1 to home off the opposite end
 # Z-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.
 # Measure the Z endstop travel and set (this is the main thing to fill in):
-# z_max_travel_mm = 400   # TODO: measure & set
+# z_max_travel_mm = 480   # TODO: measure & set
 
 [pump]
 port = "1A86:7523"        # SY-01B CH340 USB-serial (VID:PID)

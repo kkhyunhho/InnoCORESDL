@@ -42,8 +42,6 @@ def _load(path: Path) -> tuple[Config, ServerConfig]:
         motor_serial_x=stage.get("serial_x", "NTAMU6TO"),
         z_coord_invert=bool(stage.get("z_coord_invert", True)),
         x_coord_invert=bool(stage.get("x_coord_invert", True)),
-        home_dir_z=int(stage.get("home_dir_z", 0)),
-        home_dir_x=int(stage.get("home_dir_x", 0)),
         # Omit/blank the TOML key → None → driver default (400 mm).
         x_max_travel_mm=(
             float(stage["x_max_travel_mm"])

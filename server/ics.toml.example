@@ -20,8 +20,6 @@ init_force = 2        # 0/1/2 or 10..40 Z-init force code
 # the paired Z (auto-assigned, order-independent).
 serial_x = "NTAMU6TO"
 z_coord_invert = true
-# home_dir_z = 0       # flip 0<->1 to home off the opposite end
-# home_dir_x = 0
 # Per-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.
 # Set each to the axis' real travel (endstop position) so a move can't run
 # into the limit; X and Z endstops may differ.

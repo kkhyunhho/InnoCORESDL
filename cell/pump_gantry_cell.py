@@ -36,13 +36,13 @@ class Config:
     # paired Z (order doesn't matter — they always move together).
     motor_serial_x: str = "NTAMU6TO"
     # Both axes home at the 0x00 end and move +mm into the working travel via
-    # coord_invert (their encoder-positive points into the home limit). This
-    # is the uniform convention; the legacy CVMeasure.py instead homed X the
-    # opposite way (home_dir_x=0x01, no invert) — equivalent, but asymmetric.
+    # coord_invert (their encoder-positive points into the home limit). The
+    # home direction is 0x00 for both axes on every cell (uniform convention),
+    # so it's hardcoded at the home_gantry() call rather than configured — the
+    # legacy CVMeasure.py instead homed X the opposite way (0x01, no invert):
+    # equivalent, but asymmetric.
     z_coord_invert: bool = True
     x_coord_invert: bool = True
-    home_dir_z: int = 0x00
-    home_dir_x: int = 0x00
     # Per-axis soft travel limit (mm): move_gantry rejects targets outside
     # [0, max]. None → keep the driver default (400 mm). Set each to the axis'
     # real travel (endstop position) so a move never runs into the limit. The
@@ -239,9 +239,9 @@ class PumpGantryCell(Cell):
         self._stage_x_mm = target
 
     def home_gantry(self) -> tuple[float, float]:
-        MKSMotor.home_xz(
-            self._z_motors, self._x, self._cfg.home_dir_z, self._cfg.home_dir_x
-        )
+        # Both axes home off the 0x00-end limit on every cell (uniform
+        # convention); pass 0x00 explicitly since home_xz defaults X to 0x01.
+        MKSMotor.home_xz(self._z_motors, self._x, 0x00, 0x00)
         self._stage_x_mm = 0.0
         self._stage_z_mm = 0.0
         return (0.0, 0.0)
