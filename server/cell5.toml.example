@@ -1,0 +1,37 @@
+# cell5 (Phase-2 device cell) config. Copy to cell5.toml (gitignored).
+#   python -m server --config server/cell5.toml
+#
+# DRAFT — NOT WIRED YET. cell5 is the `phase2_device` composition (a single
+# Z motor + SY-01B pump + IKA hotplate + Tapo smart plug), not yet exposed
+# as a Cell behind /v1. This template just captures the wiring — above all
+# the Z-axis travel limit — so it's ready when cell5 lands. Fields (section
+# names, keys) may firm up then.
+
+[stage]
+# Single Z motor: ONE MKS SERVO57D on its own USB2CAN adapter (not the XZ
+# gantry). serial_z = FTDI serial of that adapter.
+serial_z = "NTB3EP5R"
+z_coord_invert = true
+# home_dir_z = 0         # flip 0<->1 to home off the opposite end
+# Z-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.
+# Measure the Z endstop travel and set (this is the main thing to fill in):
+# z_max_travel_mm = 400   # TODO: measure & set
+
+[pump]
+port = "1A86:7523"        # SY-01B CH340 USB-serial (VID:PID)
+syringe_uL = 125
+init_force = 2
+
+[hotplate]
+# IKA RCT digital. Omit `port` to auto-detect by USB VID:PID.
+# port = ""
+
+[plug]
+# Tapo smart plug. target = device name / IP / "all" from device_list.md;
+# credentials live in vendor/SmartPlugController/secure.env (gitignored).
+target = "plug1"
+
+[server]
+host = "0.0.0.0"
+port = 17062              # cell5 (next port after cell4 = 17060)
+log_level = "info"
