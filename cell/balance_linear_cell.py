@@ -14,6 +14,7 @@ the bench, not in CI.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 
 from vendor.entris_ii import PrecisionScaleController
@@ -50,9 +51,7 @@ def _no_gantry() -> WrongStateError:
     # Defensive stub: motion here is the linear Y rail (linear action set), not
     # an XZ gantry — the gantry methods raise so a misdirected /v1/gantry/*
     # call gets a clean 409 instead of hitting the rail.
-    return WrongStateError(
-        "balance+linear cell has no gantry", command="gantry"
-    )
+    return WrongStateError("balance+linear cell has no gantry", command="gantry")
 
 
 class BalanceLinearCell(Cell):
@@ -218,13 +217,10 @@ class BalanceLinearCell(Cell):
         pass
 
     def close(self) -> None:
+        # Best-effort shutdown — release the RS485 handle and the SBI link.
         ser = getattr(self._lin, "ser", None)
         if ser is not None:
-            try:
+            with suppress(Exception):
                 ser.close()
-            except Exception:  # noqa: BLE001 — best-effort shutdown
-                pass
-        try:
+        with suppress(Exception):
             self._scale.__exit__(None, None, None)
-        except Exception:  # noqa: BLE001
-            pass

@@ -71,9 +71,7 @@ def _no_linear() -> WrongStateError:
     # Defensive stub: motion here is the XZ gantry (gantry action set), not a
     # linear rail — the linear methods raise so a misdirected /v1/linear/* call
     # gets a clean 409 instead of hitting the gantry.
-    return WrongStateError(
-        "pump+gantry cell has no linear rail", command="linear"
-    )
+    return WrongStateError("pump+gantry cell has no linear rail", command="linear")
 
 
 class PumpGantryCell(Cell):
@@ -119,12 +117,8 @@ class PumpGantryCell(Cell):
             # several gantries' adapters share one host. Open this cell's own
             # X + Z pair by serial; never touch another cell's adapters.
             za_serial, zb_serial = config.motor_serial_z
-            za = MKSMotor.open(
-                serial=za_serial, coord_invert=config.z_coord_invert
-            )
-            zb = MKSMotor.open(
-                serial=zb_serial, coord_invert=config.z_coord_invert
-            )
+            za = MKSMotor.open(serial=za_serial, coord_invert=config.z_coord_invert)
+            zb = MKSMotor.open(serial=zb_serial, coord_invert=config.z_coord_invert)
             x = MKSMotor.open(serial=config.motor_serial_x)
         else:
             # Single gantry on this host: X by serial, the two remaining FTDI
@@ -290,9 +284,9 @@ class PumpGantryCell(Cell):
     def stop(self) -> None:
         # Hard-stop the whole gantry group; halt the pump if it exposes one.
         try:
-            MKSMotor.stop_group_hard(self._z_motors + [self._x])
-        except Exception as e:  # noqa: BLE001 — surface as a device fault
-            raise DeviceFaultError(f"gantry stop failed: {e}", command="stop")
+            MKSMotor.stop_group_hard([*self._z_motors, self._x])
+        except Exception as e:  # surface any driver failure as a device fault
+            raise DeviceFaultError(f"gantry stop failed: {e}", command="stop") from e
         halt = getattr(self._pump, "halt", None) or getattr(self._pump, "stop", None)
         if callable(halt):
             halt()
@@ -303,7 +297,7 @@ class PumpGantryCell(Cell):
             if callable(fn):
                 try:
                     fn()
-                except Exception:  # noqa: BLE001 — best-effort shutdown
+                except Exception:  # best-effort shutdown
                     print(
                         f"warning: {type(dev).__name__}.close failed", file=sys.stderr
                     )

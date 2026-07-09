@@ -12,6 +12,7 @@ import argparse
 import os
 import tomllib
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import uvicorn
@@ -133,10 +134,10 @@ def main(argv: list[str] | None = None) -> int:
     cell_kind = args.cell or _infer_cell(cfg_path)
     if cell_kind == "balance_linear":
         bl_cfg, server_cfg = _load_balance_linear(cfg_path)
-        factory = lambda: BalanceLinearCell.open(bl_cfg)  # noqa: E731
+        factory = partial(BalanceLinearCell.open, bl_cfg)
     else:
         cell_cfg, server_cfg = _load(cfg_path)
-        factory = lambda: PumpGantryCell.open(cell_cfg)  # noqa: E731
+        factory = partial(PumpGantryCell.open, cell_cfg)
 
     app = create_app(cell_factory=factory)
     uvicorn.run(
