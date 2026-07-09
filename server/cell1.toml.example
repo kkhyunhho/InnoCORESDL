@@ -18,6 +18,13 @@ x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4
 # x_max_travel_mm = 465   # TODO: measure & set
 # z_max_travel_mm = 230   # TODO: measure & set
 
+# ── Emergency-stop smart plug (planned; NOT wired yet — see ToDo.md) ─────────
+# Smart plug that cuts this XZ gantry's power supply (hardware e-stop).
+# Uncomment once the plug is installed + declared in
+# vendor/SmartPlugController/device_list.md:
+# [plug]
+# estop_target = "gantry-ps-1"   # cell1's own PSU plug (device_list.md name or IP)
+
 [server]
 host = "0.0.0.0"
 port = 17054

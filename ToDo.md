@@ -16,3 +16,16 @@ Append-only task log (SDLClaude convention). Newest at the bottom.
       fallback only if we ever want a documented single-gantry mode.
 - See `cell/pump_gantry_cell.py` `Config.motor_serial_z` / `open()`,
       `LearnedPatterns.md`, and the caveat in `CLAUDE.md` (XZ motors row).
+
+## 2026-07-09 | Apply the gantry e-stop smart plug to real cell.toml once installed
+- [ ] Uncomment + set `[plug] estop_target` in the real `cellN.toml` for
+      cell1–3 once the emergency-stop smart plugs are physically installed and
+      declared in `vendor/SmartPlugController/device_list.md`.
+- **Plan**: each XZ gantry's power supply gets a smart plug for hardware
+      e-stop. cell1 = its own plug; cell2 + cell3 **share one PSU → one shared
+      plug** (same `estop_target`, so cutting it stops both).
+- **Now**: only placeholders are in the `.example` files (commented out); the
+      real per-cell configs and the cell↔plug wiring come later.
+- **Next (separate)**: decide *when* the plug fires (trigger situations) and
+      wire `PumpGantryCell` to switch it off (`SmartPlugController.switch(
+      turn_on=False)`), e.g. from `stop()` / the CAN-fault handler.

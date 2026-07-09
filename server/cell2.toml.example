@@ -13,13 +13,20 @@ init_force = 2
 serial_x = "NTB19XKA"  # cell2's X adapter FTDI serial
 # The two paired-Z adapters. Name BOTH once wired (required when gantries share
 # a host); omit for the single-gantry leftover-two fallback.
-# serial_z = ["", ""]  # TODO: cell2's two Z adapter serials
+# serial_z = ["NTAFT1KQ", "NTA0X8KN"]  # TODO: cell2's two Z adapter serials
 z_coord_invert = true  # +mm moves Z away from its 0x00 home limit
 x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4)
 # Per-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.
 # Measure each axis' real travel (endstop position), then uncomment + set:
 # x_max_travel_mm = 465   # TODO: measure & set
 # z_max_travel_mm = 230   # TODO: measure & set
+
+# ── Emergency-stop smart plug (planned; NOT wired yet — see ToDo.md) ─────────
+# Smart plug that cuts this XZ gantry's power supply (hardware e-stop). cell2
+# and cell3 SHARE one power supply → the SAME plug (cutting it stops both).
+# Uncomment once installed + declared in vendor/SmartPlugController/device_list.md:
+# [plug]
+# estop_target = "gantry-ps-23"  # SHARED PSU plug (same target as cell3)
 
 [server]
 host = "0.0.0.0"
