@@ -29,3 +29,20 @@ Append-only task log (SDLClaude convention). Newest at the bottom.
 - **Next (separate)**: decide *when* the plug fires (trigger situations) and
       wire `PumpGantryCell` to switch it off (`SmartPlugController.switch(
       turn_on=False)`), e.g. from `stop()` / the CAN-fault handler.
+
+## 2026-07-09 | Gantry e-stop plug — finalized trigger list
+Situations that cut the gantry PSU plug (`switch(turn_on=False)`), decided:
+- [ ] **CAN fault / `stop_group_hard` fails** — the group-stop interlock can't
+      reach a motor to send F7 (= a paired-Z desync it can't halt). Fire from
+      the CAN-fault hook, exactly where the driver already logs "CUT POWER".
+- [ ] **Web "Stop All"** — the existing button → each cell's `stop()` → software
+      group stop **and** plug off.
+- [ ] **Server graceful shutdown** — SIGINT / SIGTERM / uncaught exception /
+      lifespan close cut the plug (signal handlers + lifespan `finally`).
+      **SIGKILL / power-loss is NOT covered** — chose graceful-only, no external
+      watchdog (would be heartbeat-flavored, previously rejected).
+
+Dropped: motor stall (detection unreliable); collision / over-current (only
+trips on a hard hit); serial mismatch (`MKSMotor.open` fails at startup →
+nothing ever moves); Z-drop (holds fine unpowered); shared-plug collateral
+(cell2 e-stop also kills cell3 — accepted).
