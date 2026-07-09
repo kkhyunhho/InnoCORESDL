@@ -23,7 +23,7 @@ x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4
 # Uncomment once the plug is installed + declared in
 # vendor/SmartPlugController/device_list.md:
 # [plug]
-# estop_target = "gantry-ps-1"   # cell1's own PSU plug (device_list.md name or IP)
+# estop_target = "plug2"
 
 [server]
 host = "0.0.0.0"

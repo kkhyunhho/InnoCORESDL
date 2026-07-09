@@ -26,7 +26,7 @@ x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4
 # and cell3 SHARE one power supply → the SAME plug (cutting it stops both).
 # Uncomment once installed + declared in vendor/SmartPlugController/device_list.md:
 # [plug]
-# estop_target = "gantry-ps-23"  # SHARED PSU plug (same target as cell2)
+# estop_target = "plug1"
 
 [server]
 host = "0.0.0.0"

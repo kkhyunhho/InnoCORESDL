@@ -88,12 +88,23 @@ auto-detect by the Sartorius vendor ID.
 ### Valve port gotcha (critical)
 
 The pump's valve is a Runze **M05 Bi-pass** valve with only **two** fluid
-states 90° apart (`C-1/2-3` and `C-3/1-2`). Driven as a 4-way distribution
-valve, firmware ports **1 & 3 map to the same fluid state** (and 2 & 4 to
-the other) due to 180° rotor symmetry. So `move_valve_to_port` changing the
-`?6` digit does **not** prove the fluid path changed. Source and sink must
-be **90° apart, not 180°**: on this bench the reservoir is port 2 and the
-tip is port 1. Verify with the eye (which tube moves liquid), not `?6`. Full
+states 90° apart, one per usable physical port:
+
+- **physical port 1 = tip** (state `C-1/2-3`)
+- **physical port 3 = reservoir** (state `C-3/1-2`)
+
+Physical port 2 never connects to the syringe C. Driven as a 4-way
+distribution valve, the firmware digit repeats every 180°, so
+`move_valve_to_port(n)` maps **firmware 1 → physical port 1 (tip)** and
+**firmware 2 → physical port 3 (reservoir)** (and firmware 3 ≡ 1, 4 ≡ 2). A
+changed `?6` digit therefore does **not** prove the fluid path changed —
+firmware 1 & 3 (or 2 & 4) are the *same* state.
+
+Source and sink must be a **90°-apart firmware pair**: aspirate the reservoir
+on `move_valve_to_port(2)`, dispense the tip on `move_valve_to_port(1)`.
+Firmware 1 & 3 (180°) silently aspirate and dispense at the same tube. The
+web's `valveFw` maps the physical labels (1, 3) to these firmware values
+(1, 2). Verify with the eye (which tube moves liquid), not `?6`. Full
 write-up in `LearnedPatterns.md` #1.
 
 ### Balance prerequisites (front panel, menu-only)

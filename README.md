@@ -46,11 +46,15 @@ The web proxies `/api/cell1`→17054 and `/api/cell4`→17060 (cell2/3 are mock)
 ### Valve port gotcha (critical)
 
 The pump's valve is a Runze M05 **Bi-pass** valve with only two fluid states
-90° apart. Firmware ports 1 & 3 land on the *same* state (and 2 & 4 on the
-other), so source and sink must be **90° apart, not 180°** — on this bench
-the reservoir is port 2 and the tip is port 1. Using 3 & 1 silently aspirates
-and dispenses at the same tube. Verify with the eye (which tube moves liquid),
-not the `?6` digit. See [`LearnedPatterns.md`](LearnedPatterns.md) #1.
+90° apart: **physical port 1 = tip** (`C-1/2-3`), **physical port 3 =
+reservoir** (`C-3/1-2`); physical port 2 never reaches the syringe C. The
+firmware digit repeats every 180°, so `move_valve_to_port` maps **firmware
+1 → port 1 (tip)** and **firmware 2 → port 3 (reservoir)** (3 ≡ 1, 4 ≡ 2).
+Source and sink must be a **90°-apart firmware pair** — aspirate the reservoir
+on `2`, dispense the tip on `1`. Firmware `1 & 3` (180°) silently aspirate and
+dispense at the same tube. The web's `valveFw` maps the physical labels (1, 3)
+to these firmware values (1, 2). Verify with the eye (which tube moves
+liquid), not the `?6` digit. See [`LearnedPatterns.md`](LearnedPatterns.md) #1.
 
 ### Balance prerequisites (front panel, menu-only)
 
