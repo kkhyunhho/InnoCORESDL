@@ -46,3 +46,21 @@ Dropped: motor stall (detection unreliable); collision / over-current (only
 trips on a hard hit); serial mismatch (`MKSMotor.open` fails at startup →
 nothing ever moves); Z-drop (holds fine unpowered); shared-plug collateral
 (cell2 e-stop also kills cell3 — accepted).
+
+**Implementation mapping** (build when the plugs are installed, then verify
+end-to-end — decided NOT to scaffold early since it's untestable without a plug):
+- **Hold the plug**: `PumpGantryCell.open()` — if `[plug] estop_target` set,
+  `SmartPlugController.from_files()` + `resolve_targets(target)`; power it ON at
+  open. Missing target / `device_list.md` / `secure.env` → plug = None (fully
+  inert, log a notice) so plug-less cells still run.
+- **Helper `_cut_power()`**: `asyncio.run(switch(entry, turn_on=False))`,
+  best-effort + short timeout, never raises/blocks, idempotent.
+- **Trigger 1 (CAN fault)**: register `mks_motor.set_group_fault_hook` → call
+  `_cut_power()` (the point where the driver logs "CUT POWER"; mirrors ESP32
+  `bridge.py` `emergency_shutdown`).
+- **Trigger 2 (Stop All)**: `stop()` runs the software group stop (F7) FIRST,
+  then `_cut_power()`.
+- **Trigger 3 (graceful shutdown)**: SIGINT/SIGTERM handlers + lifespan
+  `finally` (`cell.close()`) → `_cut_power()`. SIGKILL/power-loss uncovered.
+- **Order**: soft F5/F7 is always first; the plug cut is the last-resort
+  escalation.
