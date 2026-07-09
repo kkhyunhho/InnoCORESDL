@@ -15,6 +15,7 @@ server/*.toml
 
 # Demo: smart-plug credentials + local device list (never commit secrets)
 vendor/SmartPlugController/secure.env
+vendor/SmartPlugController/device_list.md
 *.env
 
 # Editor / OS
