@@ -81,7 +81,7 @@ auto-detect by the Sartorius vendor ID.
 |---|---|---|
 | Balance (Entris-II BCE224I) | `24BC:0010` | USB-C, Sartorius CDC → `ttyACM*`; omit `scale_port` to auto-detect. Must be passed into the container (`lsusb` shows `24bc:0010`). |
 | Pump (SY-01B) | `1A86:7523` | CH340 USB-serial → `ttyUSB*`; `pump.port = "1A86:7523"`. |
-| XZ motors (3× MKS SERVO57D) | `0403:6001` | FTDI USB2CAN adapters, addressed by **serial**: X = `NTAMU6TO`, the other two (`A10PUO5V`, `A10PUO5W`) are the paired Z. Driven via pyftdi (`mks_motor`), vendored from **ESP32S3BOX3MotorController** (the sole XZ gantry reference). |
+| XZ motors (3× MKS SERVO57D) | `0403:6001` | FTDI USB2CAN adapters, addressed by **serial**: X = `NTAMU6TO`, the paired Z = `A10PUO5V` / `A10PUO5W`. Set `[stage] serial_x` **and** `serial_z = [za, zb]` per cell so it opens only its own adapters — the "X by serial, other two = Z" shortcut (omit `serial_z`) is safe **only with one gantry per host**. Driven via pyftdi (`mks_motor`), vendored from **ESP32S3BOX3MotorController**. |
 | MINAS A6 linear rail (`lmc`) | `110A:1150` | Moxa UPort 1150 RS-485 adapter is the linear's serial link (NOT a TI USB3410, NOT the balance). `linear_port = "110A:1150"` resolved at runtime by `vendor.lmc.resolve_port`. |
 | ESP32-S3 | `303A:1001` | Other project; unrelated. |
 

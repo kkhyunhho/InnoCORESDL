@@ -32,9 +32,15 @@ class Config:
     pump_baud: int = 9600
     syringe_uL: int = 125
     pump_init_force: int = 2
-    # XZ gantry: FTDI serial of the X adapter; the other two adapters are the
-    # paired Z (order doesn't matter — they always move together).
+    # XZ gantry FTDI adapter serials. `motor_serial_x` names the X adapter.
+    # `motor_serial_z` names the two paired-Z adapters (order irrelevant — they
+    # always move together). Give BOTH Z serials when more than one gantry
+    # shares a host, so this cell opens only its own adapters. Leave
+    # `motor_serial_z` as None and the cell falls back to "X by serial, the two
+    # remaining FTDI = Z" — safe ONLY if this host carries exactly one gantry's
+    # three adapters (the leftover-two shortcut, fine for a single cell).
     motor_serial_x: str = "NTAMU6TO"
+    motor_serial_z: tuple[str, str] | None = None
     # Both axes home at the 0x00 end and move +mm into the working travel via
     # coord_invert (their encoder-positive points into the home limit). The
     # home direction is 0x00 for both axes on every cell (uniform convention),
@@ -107,12 +113,27 @@ class PumpGantryCell(Cell):
         # Both are no-ops on non-Linux and touch only FTDI adapters — no motion.
         prepare_usb_nodes()
         release_ftdi_sio()
-        # Opens all three USB2CAN adapters by serial (X explicit, two Z auto).
-        za, zb, x = MKSMotor.open_xz(
-            config.motor_serial_x, z_coord_invert=config.z_coord_invert
-        )
-        # open_xz inverts only the Z pair; X uses the same convention as Z
-        # (+mm away from the 0x00-home end), so set its invert here too.
+        # Open the three USB2CAN adapters by serial.
+        if config.motor_serial_z is not None:
+            # All three named explicitly — the only multi-cell-safe way when
+            # several gantries' adapters share one host. Open this cell's own
+            # X + Z pair by serial; never touch another cell's adapters.
+            za_serial, zb_serial = config.motor_serial_z
+            za = MKSMotor.open(
+                serial=za_serial, coord_invert=config.z_coord_invert
+            )
+            zb = MKSMotor.open(
+                serial=zb_serial, coord_invert=config.z_coord_invert
+            )
+            x = MKSMotor.open(serial=config.motor_serial_x)
+        else:
+            # Single gantry on this host: X by serial, the two remaining FTDI
+            # adapters become the paired Z (leftover-two shortcut).
+            za, zb, x = MKSMotor.open_xz(
+                config.motor_serial_x, z_coord_invert=config.z_coord_invert
+            )
+        # open()/open_xz invert only the Z pair; X uses the same convention as
+        # Z (+mm away from the 0x00-home end), so set its invert here too.
         x.coord_invert = config.x_coord_invert
         # Per-axis soft travel limit. None → leave the driver default (400 mm).
         # Set each axis to its real (endstop) travel so move_to rejects an

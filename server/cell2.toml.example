@@ -10,7 +10,10 @@ syringe_uL = 125
 init_force = 2
 
 [stage]
-serial_x = "NTB19XKA"  # cell2's X adapter FTDI serial; two Z auto-assigned
+serial_x = "NTB19XKA"  # cell2's X adapter FTDI serial
+# The two paired-Z adapters. Name BOTH once wired (required when gantries share
+# a host); omit for the single-gantry leftover-two fallback.
+# serial_z = ["", ""]  # TODO: cell2's two Z adapter serials
 z_coord_invert = true  # +mm moves Z away from its 0x00 home limit
 x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4)
 # Per-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.

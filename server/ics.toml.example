@@ -16,9 +16,13 @@ init_force = 2        # 0/1/2 or 10..40 Z-init force code
 
 [stage]
 # Dispense cell (cell1–3) XZ gantry: 3 MKS SERVO57D via the ESP32 mks_motor
-# driver. serial_x = FTDI serial of the X adapter; the other two adapters are
-# the paired Z (auto-assigned, order-independent).
+# driver. serial_x = FTDI serial of the X adapter; serial_z = the two paired-Z
+# adapter serials (order-independent). Naming Z explicitly is required when
+# several gantries share a host; omit serial_z only for a lone gantry.
 serial_x = "NTAMU6TO"
+# The two paired-Z adapters. Name BOTH when several gantries share a host so
+# each cell opens only its own; omit for the single-gantry leftover-two fallback.
+# serial_z = ["A10PUO5V", "A10PUO5W"]
 z_coord_invert = true
 # Per-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.
 # Set each to the axis' real travel (endstop position) so a move can't run

@@ -7,7 +7,10 @@ syringe_uL = 125
 init_force = 2
 
 [stage]
-serial_x = "NTAMU6TO" # FTDI serial of the X adapter; two Z auto-assigned
+serial_x = "NTAMU6TO"                # X adapter FTDI serial
+# The two paired-Z adapters. Name BOTH when several gantries share a host so
+# this cell opens only its own; omit for the single-gantry leftover-two fallback.
+serial_z = ["A10PUO5V", "A10PUO5W"]
 z_coord_invert = true  # +mm moves Z away from its 0x00 home limit
 x_coord_invert = true  # X uses the same convention as Z (see LearnedPatterns #4)
 # Per-axis soft travel limit (mm) — blank/omitted = driver default 400 mm.

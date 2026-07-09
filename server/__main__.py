@@ -33,6 +33,13 @@ def _load(path: Path) -> tuple[Config, ServerConfig]:
     pump = raw.get("pump", {})
     stage = raw.get("stage", {})
     server = raw.get("server", {})
+    # The two Z adapter serials (empty/omitted → None → leftover-two fallback).
+    z_serials = stage.get("serial_z") or []
+    if z_serials and len(z_serials) != 2:
+        raise ValueError(
+            "[stage] serial_z must list exactly 2 Z adapter serials "
+            f"(got {len(z_serials)}); omit it for the single-gantry fallback"
+        )
     cell_cfg = Config(
         pump_port=pump.get("port", "1A86:7523"),
         pump_address=int(pump.get("address", 1)),
@@ -40,6 +47,7 @@ def _load(path: Path) -> tuple[Config, ServerConfig]:
         syringe_uL=int(pump.get("syringe_uL", 125)),
         pump_init_force=int(pump.get("init_force", 2)),
         motor_serial_x=stage.get("serial_x", "NTAMU6TO"),
+        motor_serial_z=tuple(z_serials) if z_serials else None,
         z_coord_invert=bool(stage.get("z_coord_invert", True)),
         x_coord_invert=bool(stage.get("x_coord_invert", True)),
         # Omit/blank the TOML key → None → driver default (400 mm).
